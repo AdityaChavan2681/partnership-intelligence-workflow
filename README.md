@@ -4,13 +4,13 @@ An n8n workflow that turns public partnership and sponsorship signals into struc
 
 Built using n8n for workflow orchestration and rule-based signal enrichment.
 
-## Overview
+## 📌 Overview
 
 Sponsorship and partnership teams often deal with fragmented public information when trying to identify commercially relevant organizations. Signals like expansion, partnership activity, sponsorship intent, and commercial growth are publicly visible, but they are noisy, inconsistent, and difficult to compare quickly.
 
-This workflow converts those public signals into structured records that can support faster research, better prioritization, and more context-aware outreach.
+This workflow uses n8n for orchestration and applies rule-based logic for signal classification and enrichment
 
-## What Problem It Solves
+## ❗ What Problem It Solves
 
 Many sponsorship and partnership teams face the same recurring issues:
 
@@ -23,12 +23,12 @@ Many sponsorship and partnership teams face the same recurring issues:
 
 This workflow helps reduce that gap by classifying and enriching public signals into a format that is easier to compare and act on.
 
-## Current Workflow
+## ⚙️ Current Workflow
 
-1. Trigger workflow manually using n8n
-2. Input structured sponsorship signal data
-3. Classify signal type, market signal, and geography
-4. Enrich partnership and sponsorship readiness based on defined rules
+1. Trigger workflow manually using n8n  
+2. Input structured sponsorship signal data  
+3. Classify signal type, market signal, and geography  
+4. Enrich partnership and sponsorship readiness based on defined rules  
 
 ## ⚙️ n8n Workflow Implementation
 
@@ -36,7 +36,7 @@ This workflow is implemented using n8n for orchestration and rule-based enrichme
 
 ### 🔄 Workflow Pipeline
 
-<img width="1152" height="284" alt="image" src="https://github.com/user-attachments/assets/0edcef18-a28f-4049-b282-a132dcc5cd07" />
+![n8n workflow pipeline](https://github.com/user-attachments/assets/0edcef18-a28f-4049-b282-a132dcc5cd07)
 
 The workflow processes structured input signals through classification and enrichment stages to generate decision-ready outputs.
 
@@ -46,7 +46,7 @@ This pipeline demonstrates:
 - Partnership readiness enrichment
 - Transformation into structured output fields for analysis
 
-## Input Fields
+## 📥 Input Fields
 
 - `organization`
 - `org_type`
@@ -56,7 +56,7 @@ This pipeline demonstrates:
 - `source_url`
 - `source_type`
 
-## Output Fields
+## 📤 Output Fields
 
 - `signal_type`
 - `market_signal`
@@ -68,7 +68,7 @@ This pipeline demonstrates:
 - `blocker_type`
 - `decision_maker_relevance`
 
-## Example Input
+## 🧪 Example Input
 
 ```json
 {
@@ -82,7 +82,7 @@ This pipeline demonstrates:
 }
 ```
 
-## Example Output
+## 🧪 Example Output
 
 ```json
 {
@@ -120,4 +120,4 @@ The current version uses manually provided public signals and rule-based enrichm
 
 ## 📝 Notes
 
-This project was built as a proof-of-work prototype for AI workflow design, structured signal enrichment, and partnership intelligence use cases.
+This project was built as a prototype for AI workflow design, structured signal enrichment, and partnership intelligence use cases.
