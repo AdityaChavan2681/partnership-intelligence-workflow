@@ -1,50 +1,82 @@
 # Partnership Intelligence Workflow
 
-An n8n workflow that turns public partnership and sponsorship signals into structured intelligence for outreach prioritization, readiness analysis, and decision-maker relevance.
+An n8n workflow that transforms public partnership and sponsorship signals into structured intelligence for outreach prioritization, readiness analysis, and decision-maker relevance.
 
-Built using n8n for workflow orchestration and rule-based signal enrichment.
+Built using n8n for workflow orchestration, AI-assisted signal classification, fallback handling, and Airtable-based data storage.
+
+---
 
 ## 📌 Overview
 
-Sponsorship and partnership teams often deal with fragmented public information when trying to identify commercially relevant organizations. Signals like expansion, partnership activity, sponsorship intent, and commercial growth are publicly visible, but they are noisy, inconsistent, and difficult to compare quickly.
+Sponsorship and partnership teams often rely on fragmented public information when identifying commercially relevant organizations. Signals such as expansion, partnership activity, and growth intent are publicly available, but they are unstructured and difficult to compare consistently.
 
-This workflow uses n8n for orchestration and applies rule-based logic for signal classification and enrichment
+This workflow converts those signals into structured records by combining AI-based classification with validation and fallback logic, enabling more reliable analysis and prioritization.
+
+---
 
 ## ❗ What Problem It Solves
 
-Many sponsorship and partnership teams face the same recurring issues:
+Teams working on partnerships and sponsorships often face:
 
-- too much public information, but not enough structured insight
-- unclear timing for outreach
-- difficulty identifying which organizations are actually partnership-ready
-- manual research takes too long
-- commercial blockers are easy to miss in raw announcements
-- decision-maker relevance is often unclear from surface-level information
+- Excess raw information with little structured insight  
+- Unclear timing for outreach  
+- Difficulty identifying partnership-ready organizations  
+- Time-consuming manual research  
+- Missed commercial signals in unstructured data  
+- Limited clarity on decision-maker relevance  
+- Inconsistent AI outputs when inputs are weak or incomplete  
 
-This workflow helps reduce that gap by classifying and enriching public signals into a format that is easier to compare and act on.
+This workflow addresses these issues by **classifying, validating, enriching, and storing signals in a consistent and usable format**.
 
-## ⚙️ Current Workflow
+---
 
-1. Trigger workflow manually using n8n  
-2. Input structured sponsorship signal data  
-3. Classify signal type, market signal, and geography  
-4. Enrich partnership and sponsorship readiness based on defined rules  
+## ⚙️ Workflow Design
+
+The workflow is designed as a **multi-step pipeline with validation and fallback handling**:
+
+1. Trigger workflow manually via n8n  
+2. Input structured partnership signal data  
+3. Run AI-based signal classification  
+4. Validate required input fields (e.g., `signal_text`)  
+5. Validate AI output for required fields (`signal_type`, `priority`, `partnership_readiness`)  
+6. Route incomplete outputs through a fallback rule-based path  
+7. Normalize the signal into a consistent schema  
+8. Derive additional partnership fields  
+9. Store the final record in Airtable  
+
+---
 
 ## ⚙️ n8n Workflow Implementation
 
-This workflow is implemented using n8n for orchestration and rule-based enrichment.
+This workflow combines:
 
-### 🔄 Workflow Pipeline
+- AI-assisted classification (Groq / LLM)
+- Conditional validation using IF nodes
+- Fallback handling for incomplete AI outputs
+- Schema normalization and enrichment
+- Airtable integration for persistent storage
 
-![n8n workflow pipeline](https://github.com/user-attachments/assets/0edcef18-a28f-4049-b282-a132dcc5cd07)
+---
 
-The workflow processes structured input signals through classification and enrichment stages to generate decision-ready outputs.
+## 🔄 Workflow Pipeline
 
-This pipeline demonstrates:
-- Manual trigger with structured input schema
-- Signal classification using rule-based logic
-- Partnership readiness enrichment
-- Transformation into structured output fields for analysis
+![n8n workflow pipeline](https://github.com/user-attachments/assets/9ebaf8cc-af27-4167-a581-ee1ab8d57633)
+
+## 📊 Airtable Output
+
+![airtable output](https://github.com/user-attachments/assets/a82b98f1-770e-40d9-89f6-62f07dc5c99a)
+
+
+### Key Capabilities
+
+- Structured input handling via schema-driven design  
+- AI-based signal extraction and classification  
+- Pre- and post-AI validation checks  
+- Fallback handling for incomplete or unreliable outputs  
+- Transformation into a normalized schema  
+- Persistent storage in Airtable for downstream workflows  
+
+---
 
 ## 📥 Input Fields
 
@@ -56,8 +88,17 @@ This pipeline demonstrates:
 - `source_url`
 - `source_type`
 
+---
+
 ## 📤 Output Fields
 
+- `organization`
+- `org_type`
+- `signal_text`
+- `date`
+- `location`
+- `source_url`
+- `source_type`
 - `signal_type`
 - `market_signal`
 - `geography`
@@ -67,6 +108,8 @@ This pipeline demonstrates:
 - `priority`
 - `blocker_type`
 - `decision_maker_relevance`
+
+---
 
 ## 🧪 Example Input
 
@@ -93,7 +136,7 @@ This pipeline demonstrates:
   "location": "United States",
   "source_url": "https://brooklynpickleballteam.com/brand-partners",
   "source_type": "company_announcement",
-  "signal_type": "expansion",
+  "signal_type": "partnership_push",
   "market_signal": "growth",
   "geography": "US",
   "partnership_readiness": "high",
@@ -107,17 +150,25 @@ This pipeline demonstrates:
 
 ## 📊 Current Status
 
-This is an early-stage prototype focused on sports sponsorship and partnership intelligence.  
-The current version uses manually provided public signals and rule-based enrichment inside n8n to generate structured outputs.
+This is an early-stage prototype focused on partnership and sponsorship intelligence workflows.
+
+The current implementation includes:
+
+- Manually provided public signals for controlled testing  
+- AI-assisted signal classification using an LLM  
+- Validation and fallback handling for incomplete AI outputs  
+- Uses Airtable (trial environment) for prototyping data storage and validating workflow outputs
+
+---
 
 ## 🔜 Next Steps
 
-- Test more real-world sports and partnership signals
-- Add organization tiering (local, regional, national, elite)
-- Expand blocker detection and commercial maturity logic
-- Integrate external sources through HTTP/API nodes
-- Store outputs in Airtable, Google Sheets, or a database
+- Test against more real-world partnership signals  
+- Add organization tiering (local, regional, national, elite)  
+- Expand fallback logic to handle more edge cases  
+- Integrate external APIs for automated signal ingestion  
+- Extend storage and reporting beyond Airtable  
 
 ## 📝 Notes
 
-This project was built as a prototype for AI workflow design, structured signal enrichment, and partnership intelligence use cases.
+This project demonstrates AI-integrated workflow design, structured signal enrichment, and reliability-focused pipeline development using validation and fallback handling.
