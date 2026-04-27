@@ -1,366 +1,379 @@
-# Partnership Intelligence Pipeline
-### Sports Property Signal Scanning, Brand Fit Assessment, and Scan Memory
+  # Partnership Intelligence Pipeline
 
-An intelligence pipeline that transforms fragmented public partnership and sponsor signals into structured opportunity intelligence.
+  ### Sports Property Signal Scanning, Brand Prospect Assessment, and Scan Memory
 
-The project contains two connected workflows:
+  A public-web intelligence pipeline for turning fragmented partnership and sponsorship evidence into structured opportunity intelligence.
 
-1. Sports Property Signal Scanner: evaluates multiple public pages from a sports organization to detect partnership readiness.
-2. Brand Prospect Assessor: evaluates multiple pages from a brand/company website, scores page-level evidence, and aggregates the results into a company-level sponsor-fit assessment.
+  The project contains two related n8n workflows:
 
+  1. **Prototype Sports Property Signal Scanner**
+     Scans public pages from a sports organization to detect partnership readiness, sponsorship signals, commercial activity, and outreach priority.
 
----
+  2. **Brand Prospect Assessor**
+     Scans public pages from an outside brand/company website, evaluates page-level sponsor-fit evidence, and aggregates the result into a company-level brand assessment.
 
-## 📌 Overview
+  Together, these workflows support both sides of partnership intelligence:
 
-The system evaluates public web evidence from two directions.
+  - Is a sports property commercially active and partnership-ready?
+  - Is a brand a strong sponsor or partner prospect for that property?
 
-The sports property workflow asks whether an organization shows commercial partnership readiness across pages such as partner lists, events, and news.
+  ---
 
-The brand assessment workflow asks whether a company is a strong sponsor or partner prospect by analyzing its homepage, about page, product/category page, and blog/news content.
+  ## Overview
 
-Together, the workflows support both opportunity detection and brand-prospect qualification.
+  Partnership teams often rely on scattered public signals: partner pages, event pages, news posts, product pages, facility pages, and brand websites. These signals are noisy, inconsistent, and difficult to compare manually.
 
+  This project converts that public evidence into structured records that can be scored, reviewed, stored, and monitored over time.
 
----
+  The pipeline uses a hybrid approach:
 
-### Key Capabilities
-- Sports property signal scanning across partner, event, and news pages
-- Brand prospect assessment across homepage, about, product, and blog pages
-- AI extraction with deterministic validation and fallback handling
-- Page-level scoring plus company-level sponsor-fit aggregation
-- MongoDB scan memory for historical comparison and structured storage 
+  - deterministic source heuristics
+  - AI-assisted classification
+  - validation and fallback handling
+  - page-level scoring
+  - company-level aggregation
+  - MongoDB storage
+  - Airtable surfacing for review-ready outputs
 
----
+  ---
 
-## ❗ Problem
+  ## Workflows
 
-Partnership teams often rely on fragmented public signals that are noisy,
-difficult to compare, and often too weak to support reliable outreach decisions.
+  ### Prototype Sports Property Signal Scanner
 
-This system converts scattered public evidence into structured opportunity
-intelligence that can be evaluated, ranked, and prioritized for outreach.
+  The original workflow scans a sports organization’s own public pages.
 
-- Multi-source signal comparison  
-- AI-assisted extraction with deterministic validation
-- Opportunity scoring  
-- Scan-memory and change detection  
-- Tiered storage for surfaced vs historical intelligence
+  Example sources:
 
----
+  - partner pages
+  - past event pages
+  - latest news pages
+  - sponsorship or commercial pages
 
-## ⚙️ Pipeline Stages
+  It evaluates whether the organization shows signs of commercial readiness, partnership activity, sponsorship potential, or outreach priority.
 
-The system operates through two related pipelines.
+  ### Main Outputs
 
-### Sports Signal Scanner
-1. Source registry creation
-2. Page fetching and text extraction
-3. Source qualification and AI classification
-4. Signal normalization and scoring
-5. Scan-memory comparison
-6. Tiered Airtable/MongoDB storage
+  - `signal_type`
+  - `market_signal`
+  - `partnership_readiness`
+  - `sponsorship_readiness`
+  - `likely_partner_type`
+  - `priority`
+  - `signal_score`
+  - `signal_conclusion`
+  - `recommended_action`
+  - `scan_status`
+  - `storage_reason`
 
-### Brand Prospect Assessor
-1. Brand input creation
-2. Brand page candidate generation
-3. Page fetching and text extraction
-4. Page-level brand fit classification
-5. Page-level scoring and MongoDB storage
-6. Company-level aggregation and final sponsor-fit assessment
+  This workflow also includes early scan-memory logic for comparing current results against previous scans.
 
+  ---
 
----
+  ### Brand Prospect Assessor
 
-## 🧠 Architecture Layers
+  The newer workflow evaluates an outside brand or company as a potential sponsor or partner.
 
-### Source Preparation
-- Multi-source ingestion
-- AI classification with deterministic validation
-- Source-level scoring and recommendations
+  Starting from a brand root domain, it discovers and evaluates relevant pages such as:
 
-### Evaluation
-- Source heuristics and company evaluation framework
-- Scan-memory and deduplication
-- Partner reference validation
+  - homepage
+  - about page
+  - product/category pages
+  - partner/sponsorship pages
+  - blog/news pages
+  - events/athlete pages
+  - contact pages as supporting context only
 
-### Intelligence & Storage
-- MongoDB for page-level evidence, scan history, and company-level assessments
-- Airtable for surfaced high-priority opportunity signals
-- `brand_page_assessments` for individual brand page evidence
-- `brand_company_assessments` for aggregated company-level sponsor-fit decisions
+  Each page is classified and scored individually. The workflow then aggregates the strongest page-level evidence into one company-level sponsor-fit assessment.
 
----
+  ### Main Outputs
 
-## 🔄 Workflow Pipeline
+  - `brand_fit_score`
+  - `brand_fit_conclusion`
+  - `recommended_action`
+  - `company_category`
+  - `business_model`
+  - `recommended_offer`
+  - `primary_partnership_angle`
+  - `primary_evidence_summary`
+  - `source_urls`
+  - `page_count`
+  - `usable_page_count`
+  - `brand_result_signature`
+
+  ---
+
+  ## Architecture
+
+  ```text
+  Input
+  → Page discovery / source selection
+  → Page fetch
+  → Text extraction
+  → Source metadata inference
+  → Pre-AI heuristics
+  → AI classification
+  → Validation and fallback handling
+  → Page-level scoring
+  → Key/signature generation
+  → MongoDB storage
+  → Brand-level aggregation
+  → Airtable review output
+  ```
+
+  ## Old Pipeline Snapshot
+
+  <img width="1195" height="259" alt="image 102" src="https://github.com/user-attachments/assets/bc0b5342-5501-4d0a-b064-63ce0f7d2ef7" />
+
+  ## Updated Pipeline Snapshot
+
+  The current n8n workflow includes page discovery, text extraction, pre-AI heuristics, AI classification batches, validation, page-level scoring, company-level aggregation, and Airtable/MongoDB storage.
+
+  <img width="1503" height="598" alt="image 100" src="https://github.com/user-attachments/assets/b2737c16-f68c-453c-ac80-7b056944f5d4" />
+
+
+  ---
+
+  ## Storage
+
+  ### MongoDB
+
+  MongoDB is used for structured storage and historical evidence.
+
+  Current collections include:
+  
+  - `signal_checks`
+  - `scan_history`
+  - `brand_page_assessments`
+  - aggregate brand assessment records
+
+  ### Brand Page Assessment Result
+
+  MongoDB stores both detailed page-level records and broader assessment outputs.
+  ```json
+  {
+    "target_organization": "Brooklyn Pickleball Team",
+    "analyzed_organization": "JOOLA",
+    "source_url": "https://joola.com/",
+    "page_role": "company_profile",
+    "company_category": "pickleball equipment",
+    "business_model": "consumer sports equipment",
+    "sports_relevance": "high",
+    "pickleball_relevance": "high",
+    "sponsor_fit": "high",
+    "partnership_angle": "Equipment and apparel partnership for pickleball events and players",
+    "outreach_priority": "high",
+    "recommended_offer": "product sponsorship",
+    "brand_fit_score": 100,
+    "brand_fit_conclusion": "strong brand fit",
+    "recommended_action": "prioritize outreach",
+    "storage_tier": "priority_brand_prospect"
+  }
+  ```
+  ### Airtable
+
+  Airtable is used as the human-facing review layer.
+
+  Current Airtable tables include:
+
+  - `signals`
+  - `brand_assessments`
+
+  The `signals` table stores sports-property signal results.
+  The `brand_assessments` table stores company-level sponsor-fit assessments.
+
+  <img width="1925" height="886" alt="image 101" src="https://github.com/user-attachments/assets/33279c7e-f74b-4e83-bd59-3d9bec36d9b4" />
+
+  ---
+
+  ## Example Inputs
+
+  
+  ### Brand Prospect Assessor Input
+  
+  ```json
+  {
+    "target_organization": "Brooklyn Pickleball Team",
+    "target_org_type": "sports team",
+    "target_market": "pickleball / sports / events",
+    "analyzed_organization": "JOOLA",
+    "analyzed_org_type": "brand",
+    "root_domain": "https://joola.com",
+    "relationship_context": "Potential or comparable brand partner for Brooklyn Pickleball Team"
+  }
+  ```
+
+  ### Prototype Sports Property Signal Input
+
+
+  ```json
+  {
+    "organization": "Brooklyn Pickleball Team",
+    "org_type": "sports team",
+    "sources": [
+      {
+        "source_url": "https://brooklynpickleballteam.com/brand-partners"
+      },
+      {
+        "source_url": "https://brooklynpickleballteam.com/past-events"
+      },
+      {
+        "source_url": "https://brooklynpickleballteam.com/latest-news"
+      }
+    ]
+  }
+  ```
+
+
+  ---
+
+  ## Example Outputs
+
+  ### Brand Assessment Result
+
+  ```json
+  {
+    "target_organization": "Brooklyn Pickleball Team",
+    "analyzed_organization": "JOOLA",
+    "company_category": "pickleball equipment",
+    "business_model": "consumer sports equipment",
+    "recommended_offer": "product sponsorship",
+    "brand_fit_score": 95,
+    "brand_fit_conclusion": "strong brand fit",
+    "recommended_action": "prioritize outreach",
+    "primary_partnership_angle": "JOOLA is a strong equipment partner candidate based on direct pickleball product and facility partnership evidence.",
+    "page_count": 4,
+    "usable_page_count": 4,
+    "aggregate_version": "brand_v1"
+  }
+  ```
+
+  ### Prototype Sports Property Signal Result
+
+  ```json
+  {
+    "organization": "Brooklyn Pickleball Team",
+    "source_type": "brand_partners_page",
+    "signal_type": "partnership_presence",
+    "partnership_readiness": "high",
+    "sponsorship_readiness": "high",
+    "likely_partner_type": "brand partnership",
+    "signal_score": 96,
+    "signal_conclusion": "strong partnership signal",
+    "recommended_action": "prioritize outreach"
+  }
+  ```
+  
+  ---
+
+  ## Key Capabilities
+
+  - Multi-source sports property signal scanning
+  - Multi-page brand/company assessment
+  - Homepage-based brand page discovery
+  - Source metadata inference
+  - Clean text extraction from public webpages
+  - AI classification with structured fields
+  - Deterministic validation and fallback handling
+  - Page-level opportunity scoring
+  - Company-level sponsor-fit aggregation
+  - Airtable output for review-ready records
+  - MongoDB storage for evidence and history
+  - Early scan-memory and change-detection support
+
+  ---
+
+  ## Current Status
+
+  This is an active prototype.
+
+  The original sports-property signal scanner was intentionally hard-coded around a few Brooklyn Pickleball Team pages. That prototype helped establish the core system patterns:
+
+  - source metadata
+  - clean text extraction
+  - AI classification
+  - fallback handling
+  - scan-memory signatures
+
+  The newer brand prospect assessor generalizes the system toward reusable sponsor-prospect evaluation across outside companies and brands.
+
+  ---
+
+  ## Recent Progress
+
+  This update marks a major expansion of the project into reusable brand prospect intelligence.
+
+  Today’s work focused on building and refining the **Brand Prospect Assessor**, a workflow that evaluates outside brands and companies as potential sponsors or partners for a target sports property.
+
+  Instead of relying on a fixed list of known source pages, the new workflow starts from a company root domain, discovers relevant internal pages, evaluates each page as evidence, and aggregates the results into one company-level
+  sponsor-fit assessment.
+
+  Key progress from this update:
+
+  - Built a dedicated brand/company assessment workflow
+  - Added homepage-based internal page discovery
+  - Added page role classification for homepage, about, product, blog/news, sponsorship, athlete/event, and contact pages
+  - Added page-level sponsor-fit classification
+  - Added page-level brand-fit scoring
+  - Added fallback handling when AI output is missing or invalid
+  - Added company-level aggregation across multiple page assessments
+  - Added MongoDB storage for page-level evidence
+  - Added MongoDB storage for aggregate brand assessment records
+  - Added a dedicated Airtable `brand_assessments` table for review-ready company outputs
+  - Updated Airtable field names to match brand assessment outputs
+  - Renamed workflow nodes for clearer page-level and company-level stages
+  - Identified Groq token usage as the next optimization target
+
+  The main shift is that the system can now answer a broader and more valuable question:
+
+  ```text
+  Given a target sports property and an outside company,
+  is this company a credible sponsor or partner prospect?
+  ```
+  This turns the project from a simple signal scanner into a reusable sponsor-prospect assessment pipeline. It now supports structured evaluation of brands across multiple public pages, with page-level evidence, final company-level
+  scoring, and storage paths for both detailed review and high-level decision making.
+  
+  ---
+  
+  ## Roadmap
+
+  - Add dedupe/upsert logic to the brand assessment workflow
+  - Add material-change detection for repeated brand scans
+  - Reduce AI token usage with tighter page selection and text limits
+  - Batch assessment across multiple brands
+  - Rank brands across sponsor categories
+  - Add outreach-ready summaries
+  - Add stronger Airtable views for review queues
+  - Separate page-level and company-level MongoDB collections more cleanly
+
+  ---
+
+  ## Design Principles
+
+  - Multi-source evidence over single-page assumptions
+  - Deterministic validation over blind AI trust
+  - Page-level evidence before company-level conclusions
+  - MongoDB for memory and depth
+  - Airtable for review and action
+  - Conservative fallback behavior when AI output is missing or weak
+
+  ---
+
+  ## Potential Use Cases
+
+  - Partnership target discovery
+  - Sponsor prospect qualification
+  - Sports property commercial-readiness scanning
+  - Brand fit scoring
+  - Outreach prioritization
+  - Sponsorship category research
+  - Historical monitoring of public commercial signals
+
+  ## Why This Matters
+
+  This is more than a scraping workflow.
+
+  The project combines public-web extraction, AI-assisted classification, deterministic scoring, scan memory, and structured storage to support practical partnership intelligence.
+
+  The goal is to help identify which organizations and brands are actually worth reviewing, ranking, and prioritizing for partnership outreach.
 
-![n8n workflow pipeline](https://github.com/user-attachments/assets/7972bfcb-caf5-46c9-afd9-92aa220bded7)
-
-## 📊 Airtable Output
-
-Strong Source Result
-
-![airtable output](https://github.com/user-attachments/assets/b224d2fc-6283-4a28-982f-a11dab598f7d)
-
-## 📊 MongoDB Output
-
-Moderate Source Result
-
-![mongodb output1](https://github.com/user-attachments/assets/6870d254-31b5-4d47-9e28-d6a04b3f35a1)
-
-Weak Source Result
-
-![mongodb output2](https://github.com/user-attachments/assets/34ddf0a8-d5c6-4445-a356-9642e7efce08)
-
----
-
-## ✅ Current Capabilities
-
-- Multi-source signal ingestion for sports properties
-- Multi-page brand assessment for sponsor prospects
-- AI-assisted classification with deterministic validation
-- Page-level and company-level scoring
-- MongoDB storage for scan history, page evidence, and final company assessments
-- Optional Airtable routing for surfaced high-priority signals
-
----
-
-## 🔬 Advanced Workflow Node Detail (Optional Deep Dive)
-
-### Source Preparation
-- Manual Test Trigger
-- Create Source Registry
-- Select Candidate Sources
-- Infer Source Metadata
-- Fetch Candidate Pages
-- Extract Clean Source Text
-- Check AI Readiness
-
-### Evaluation
-- Apply Source Heuristics
-- Apply Company Evaluation Framework
-- Classify Partnership Signal
-- Validate AI Output
-- Assemble Signal Record
-- Normalize And Enrich Signal
-- Score Opportunity Signal
-
-### Intelligence & Storage
-- Compute Scan Keys
-- Find Existing Scan Record
-- Merge Current Scan With History
-- Classify Scan Status
-- Route Airtable Or Mongo
-- Save To Airtable
-- Save Backup To MongoDB
-
----
-
-
-## 📥 Example Inputs
-
-The project supports two input shapes depending on the workflow.
-
-### Sports Property Signal Scanner
-
-This workflow starts from an organization-level source registry containing a `sources[]` array of candidate URLs.
-
-### Brand Prospect Assessor
-
-This workflow starts from one brand/company root domain, generates candidate pages, scores each page, and aggregates the results into one company-level assessment.
-
-These source records form the signal comparison set used for evaluation and scoring.
-
----
-
-### Sports Property Signal Scanner
-
-```json
-{
-  "organization": "Brooklyn Pickleball Team",
-  "org_type": "sports team",
-  "sources": [
-    {
-      "source_url": "https://brooklynpickleballteam.com/brand-partners"
-    },
-    {
-      "source_url": "https://brooklynpickleballteam.com/past-events"
-    },
-    {
-      "source_url": "https://brooklynpickleballteam.com/latest-news"
-    }
-  ]
-}
-```
-
-### Brand Prospect Assessor
-
-```json
-{
-  "target_organization": "Brooklyn Pickleball Team",
-  "target_org_type": "sports team",
-  "target_market": "pickleball / sports / events",
-  "analyzed_organization": "JOOLA",
-  "analyzed_org_type": "brand",
-  "root_domain": "https://joola.com",
-  "relationship_context": "Existing or comparable brand partner for Brooklyn Pickleball Team"
-}
-```
-
-📤 Output Fields
-
-Sports Property Signal Fields
-signal_type
-signal_score
-signal_conclusion
-recommended_action
-partnership_readiness
-sponsorship_readiness
-scan_key
-scan_status
-storage_reason
-Brand Page Assessment Fields
-page_label
-source_role
-brand_fit_score
-brand_fit_conclusion
-company_category
-sponsor_fit
-partnership_angle
-recommended_offer
-Company-Level Brand Assessment Fields
-overall_company_category
-overall_sponsor_fit
-company_fit_score
-best_partnership_angle
-final_recommendation
-company_assessment_key
-storage_tier
-
----
-
-## 📤 Output Fields
-
-### Sports Property Signal Fields
-- `signal_type`
-- `signal_score`
-- `signal_conclusion`
-- `recommended_action`
-- `partnership_readiness`
-- `sponsorship_readiness`
-- `scan_key`
-- `scan_status`
-- `storage_reason`
-
-### Brand Page Assessment Fields
-- `page_label`
-- `source_role`
-- `brand_fit_score`
-- `brand_fit_conclusion`
-- `company_category`
-- `sponsor_fit`
-- `partnership_angle`
-- `recommended_offer`
-
-### Company-Level Brand Assessment Fields
-- `overall_company_category`
-- `overall_sponsor_fit`
-- `company_fit_score`
-- `best_partnership_angle`
-- `final_recommendation`
-- `company_assessment_key`
-- `storage_tier`
-
----
-
-## 📤 Example Outputs
-
-### Sports Property Signal Result
-
-```json
-{
-  "organization": "Brooklyn Pickleball Team",
-  "source_type": "brand_partners_page",
-  "signal_type": "partnership_presence",
-  "partnership_readiness": "high",
-  "sponsorship_readiness": "high",
-  "likely_partner_type": "brand partnership",
-  "signal_score": 96,
-  "signal_conclusion": "strong partnership signal",
-  "recommended_action": "prioritize outreach"
-}
-```
-
-### Company-Level Brand Assessment
-
-```json
-{
-  "target_organization": "Brooklyn Pickleball Team",
-  "analyzed_organization": "JOOLA",
-  "page_count": 4,
-  "average_page_score": 95,
-  "overall_company_category": "pickleball equipment",
-  "overall_sponsor_fit": "high",
-  "company_fit_score": 95,
-  "best_partnership_angle": "Official pickleball paddle and equipment partner",
-  "recommended_offer": "product sponsorship",
-  "final_recommendation": "prioritize outreach",
-  "storage_tier": "priority_company_prospect"
-}
-```
-
-## 🧪 Example Use Case
-
-This helps answer:
-
-- Which public source actually shows partnership readiness?
-- Which pages are useful evidence versus noise?
-- Is this organization worth prioritizing for outreach?
-- Which source should a human reviewer trust most?
-
-## 📊 Current Status
-
-Current prototype supports:
-
-- Multi-source signal ingestion for sports properties
-- AI-assisted classification with validation and fallback handling
-- Source-level scoring and scan-memory signatures
-- Multi-page brand prospect assessment
-- Page-level MongoDB storage in `brand_page_assessments`
-- Company-level aggregation in `brand_company_assessments`
-- Optional Airtable routing for surfaced high-priority signals
-
-## 🔜 Roadmap
-
-- Dedupe and upsert logic for page-level and company-level assessments
-- Dynamic brand page discovery from homepage links
-- Batch assessment across multiple brands
-- Company-level ranking across sponsor categories
-- Historical material-change detection
-- Outreach-ready recommendation generation
-
-## 🧠 Design Principles
-
-- Deterministic validation over blind AI trust
-- Multi-source evidence over single-source assumptions
-- Structured intelligence over raw extraction
-
-## 🚀 Why This Is More Than a Workflow
-
-This prototype combines:
-
-- Signal extraction  
-- Decision scoring  
-- Scan memory  
-- Historical intelligence storage  
-
-It is designed to support opportunity discovery,
-prioritization, and evolving partnership intelligence —
-not just data processing.
-
-## 🎯 Potential Real-World Applications
-
-- Partnership target discovery
-- Sponsor opportunity ranking
-- Multi-source outreach intelligence
-- Signal monitoring across target organizations
