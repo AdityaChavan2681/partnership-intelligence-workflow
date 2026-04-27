@@ -54,6 +54,17 @@
 
   Each page is classified and scored individually. The workflow then aggregates the strongest page-level evidence into one company-level sponsor-fit assessment.
 
+  ### Page Discovery and Batch Processing
+
+  The workflow starts from a single brand root domain and fetches the homepage. It then discovers internal links from that homepage, filters out low-value paths such as cart, checkout, login, privacy, terms, shipping, search, sale, and
+  static asset URLs, and classifies the remaining pages by role.
+
+  The current crawl configuration evaluates up to 10 selected pages across roles such as homepage, about, contact, product/category, blog/news, partner/sponsorship, and events/athlete pages.
+
+  Selected pages are sorted by AI priority, assigned into batches of two pages, and routed across five AI classification branches. Each branch classifies page-level sponsor-fit evidence using the same structured output schema.
+
+  After classification, batch outputs are normalized, merged, validated, scored at the page level, stored in MongoDB, and aggregated into one company-level brand assessment for MongoDB and Airtable.
+
   ### Main Outputs
 
   - `brand_fit_score`
@@ -74,25 +85,29 @@
   ## Architecture
 
   ```text
-  Brand input
+  Brand root domain
   → Homepage fetch
-  → Internal page discovery
-  → Page fetch
-  → Text extraction
+  → Internal link discovery
+  → Relevant page filtering and role classification
+  → Fetch selected pages, up to 10 total
+  → Clean text extraction
   → Source metadata inference
-  → Pre-AI heuristics
-  → AI classification batches
-  → Validation and fallback handling
-  → Page-level scoring
+  → Pre-AI heuristics and priority sorting
+  → Batch assignment, 2 pages per AI branch
+  → Five AI classification branches
+  → Normalize and merge batch outputs
+  → Validate page classifications
+  → Fallback handling for weak or invalid AI output
+  → Page-level sponsor-fit scoring
   → MongoDB page evidence storage
   → Brand-level aggregation
-  → Aggregate assessment storage
+  → MongoDB aggregate assessment storage
   → Airtable review output
   ```
 
   ---
 
-  ## Updated Pipeline Snapshot
+  ## Pipeline Snapshot
 
   The current n8n workflow includes page discovery, text extraction, pre-AI heuristics, AI classification batches, validation, page-level scoring, company-level aggregation, and Airtable/MongoDB storage.
   
@@ -115,7 +130,7 @@
 
   Airtable is used as the human-facing review layer.
 
-  Current Airtable tables include:
+  Current Airtable review output uses:
 
   - `brand_assessments`
 
