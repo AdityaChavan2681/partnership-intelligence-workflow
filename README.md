@@ -61,7 +61,7 @@
 
   The current crawl configuration evaluates up to 10 selected pages across roles such as homepage, about, contact, product/category, blog/news, partner/sponsorship, and events/athlete pages.
 
-  Selected pages are sorted by AI priority, assigned into batches of two pages, and routed across five AI classification branches. Each branch classifies page-level sponsor-fit evidence using the same structured output schema.
+  Selected pages are sorted by AI priority, assigned into batches of two pages, and routed across five AI classification branches. The branches share one Gemini chat model connection and use staggered waits plus retry handling for more stable structured classification under provider rate limits.
 
   After classification, batch outputs are normalized, merged, validated, scored at the page level, stored in MongoDB, and aggregated into one company-level brand assessment for MongoDB and Airtable.
 
@@ -111,7 +111,23 @@
 
   The current n8n workflow includes page discovery, text extraction, pre-AI heuristics, AI classification batches, validation, page-level scoring, company-level aggregation, and Airtable/MongoDB storage.
   
-  <img width="1503" height="598" alt="image 100" src="https://github.com/user-attachments/assets/b2737c16-f68c-453c-ac80-7b056944f5d4" />
+  <img width="1429" height="292" alt="Pipeline" src="https://github.com/user-attachments/assets/15b17f61-88a4-4cc0-aa5a-03ff9e555f9c" />
+
+  ---
+
+  ## Recent Reliability Update
+
+  The workflow was recently updated to improve LLM classification reliability under provider rate limits.
+
+  Current changes include:
+
+  - Consolidated AI classification from separate model branches into one Gemini chat model connection.
+  - Added staggered Wait nodes across AI batch branches to avoid sending all model requests at the same time.
+  - Enabled retry handling on all AI classification branches.
+  - Tuned Gemini settings for structured JSON extraction with low temperature and capped output tokens.
+  - Updated Airtable field handling so aggregate scores, evidence summaries, source URLs, and top evidence pages are stored in a review-friendly format.
+
+  This update keeps the pipeline closer to a production-style workflow where model provider limits, retries, output formatting, and review-layer storage need to be handled explicitly.
 
   ---
 
@@ -221,7 +237,7 @@
   - Batch assessment across multiple brands
   - Rank brands across sponsor categories
   - Add outreach-ready summaries
-  - Add stronger Airtable views for review queues
+  - Add more Airtable review views for priority queues and follow-up tracking
   - Separate page-level and company-level MongoDB collections more cleanly
 
   ---
