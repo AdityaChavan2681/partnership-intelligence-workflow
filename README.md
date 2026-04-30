@@ -42,6 +42,9 @@
 
   The Brand Prospect Assessor evaluates an outside brand or company as a potential sponsor or partner for a target sports property.
 
+  Assessment jobs are loaded from a MongoDB-backed `brand_assessment_jobs` queue. Each job defines the target sports property, partner group, analyzed organization, root domain, relationship context, config version, and queue status.
+  During testing, the workflow can target a specific queued organization by adding `analyzed_organization` to the MongoDB query; in normal operation, it can select active queued jobs from the collection.
+
   Starting from a brand root domain, it discovers and evaluates relevant pages such as:
 
   - Homepage
@@ -79,23 +82,32 @@
   - `page_count`
   - `usable_page_count`
   - `brand_result_signature`
+  - `partner_group`
+  - `evidence_page_count`
+  - `strong_evidence_page_count`
+  - `high_fit_page_count`
+  - `top_evidence_pages`
+  - `brand_key`
 
   ---
 
   ## Architecture
 
   ```text
-  Brand root domain
+  MongoDB queued assessment job
+  → Select active queued brand/company
+  → Brand root domain
   → Homepage fetch
   → Internal link discovery
   → Relevant page filtering and role classification
   → Fetch selected pages, up to 10 total
+  → Page-level fetch validation and failed-page suppression
   → Clean text extraction
   → Source metadata inference
   → Pre-AI heuristics and priority sorting
   → Batch assignment, 2 pages per AI branch
   → Five AI classification branches
-  → Normalize and merge batch outputs
+  → Deterministic AI-output normalization and merge batch outputs
   → Validate page classifications
   → Fallback handling for weak or invalid AI output
   → Page-level sponsor-fit scoring
@@ -103,6 +115,7 @@
   → Brand-level aggregation
   → MongoDB aggregate assessment storage
   → Airtable review output
+  → Optional MongoDB job-status update
   ```
 
   ---
@@ -111,23 +124,24 @@
 
   The current n8n workflow includes page discovery, text extraction, pre-AI heuristics, AI classification batches, validation, page-level scoring, company-level aggregation, and Airtable/MongoDB storage.
   
-  <img width="1429" height="292" alt="Pipeline" src="https://github.com/user-attachments/assets/15b17f61-88a4-4cc0-aa5a-03ff9e555f9c" />
+  <img width="1670" height="294" alt="image" src="https://github.com/user-attachments/assets/945c0368-56ef-4144-8279-f25ad297b056" />
 
   ---
 
   ## Recent Reliability Update
 
-  The workflow was recently updated to improve LLM classification reliability under provider rate limits.
+  The workflow was recently updated to improve reliability, scoring quality, and reviewability across real brand tests.
 
   Current changes include:
 
-  - Consolidated AI classification from separate model branches into one Gemini chat model connection.
-  - Added staggered Wait nodes across AI batch branches to avoid sending all model requests at the same time.
-  - Enabled retry handling on all AI classification branches.
-  - Tuned Gemini settings for structured JSON extraction with low temperature and capped output tokens.
-  - Updated Airtable field handling so aggregate scores, evidence summaries, source URLs, and top evidence pages are stored in a review-friendly format.
-
-  This update keeps the pipeline closer to a production-style workflow where model provider limits, retries, output formatting, and review-layer storage need to be handled explicitly.
+  - Added page-level fetch validation after discovered-page HTTP requests so failed pages, 404s, and page-not-found responses do not reach AI classification or scoring.
+  - Enabled non-fatal HTTP fetching for discovered pages, allowing one bad internal URL to be skipped without stopping the full assessment.
+  - Added deterministic Normalize nodes after every AI batch to correct common LLM overclaims, including contact pages, event listings, generic blog indexes, medical case-study pages, and unsupported athlete/pickleball language.
+  - Removed company-specific hardcoded cleanup language so normalization works across brands.
+  - Preserved `ai_raw_output` alongside normalized fields for auditability.
+  - Added batch metadata, text-length metadata, truncation flags, and page-level assessment keys for debugging and historical storage.
+  - Added aggregate evidence counts such as `evidence_page_count`, `strong_evidence_page_count`, and `high_fit_page_count`.
+  - Updated Airtable output so company-level assessments include partner group, evidence summaries, top evidence pages, source URLs, and scoring metadata.
 
   ---
 
@@ -167,6 +181,7 @@
     "analyzed_organization": "JOOLA",
     "analyzed_org_type": "brand",
     "root_domain": "https://joola.com",
+    "partner_group": "brand_partner",
     "relationship_context": "Potential or comparable brand partner for Brooklyn Pickleball Team"
   }
   ```
@@ -181,18 +196,35 @@
   {
     "target_organization": "Brooklyn Pickleball Team",
     "analyzed_organization": "JOOLA",
+    "partner_group": "brand_partner",
     "company_category": "pickleball equipment",
     "business_model": "consumer sports equipment",
-    "recommended_offer": "product sponsorship",
-    "brand_fit_score": 95,
+    "recommended_offer": "player gear partnership",
+    "brand_fit_score": 100,
     "brand_fit_conclusion": "strong brand fit",
     "recommended_action": "prioritize outreach",
-    "primary_partnership_angle": "JOOLA is a strong equipment partner candidate based on direct pickleball product and facility partnership evidence.",
-    "page_count": 4,
-    "usable_page_count": 4,
+    "primary_partnership_angle": "As a leading manufacturer of pickleball paddles and equipment, JOOLA is a natural partner for professional team sponsorship and gear supply.",
+    "page_count": 10,
+    "usable_page_count": 9,
+    "evidence_page_count": 9,
     "aggregate_version": "brand_v1"
   }
   ```
+
+  ---
+
+  ## Current Test Results
+
+  The workflow has been tested end-to-end on several partner categories:
+
+  | Company | Category | Partner Group | Score | Conclusion |
+  |---|---|---|---:|---|
+  | JOOLA | pickleball equipment | brand_partner | 100 | strong brand fit |
+  | KA-EX | wellness and recovery beverage | brand_partner | 56 | moderate brand fit |
+  | SoftWave TRT | sports medicine and recovery | brand_partner | 54 | moderate brand fit |
+  | Stella Blue Coffee | beverage / coffee | brand_partner | 39 | weak brand fit |
+
+  These tests validate that direct pickleball equipment brands rank above adjacent recovery, beverage, and lifestyle brands.
   
   ---
 
@@ -204,6 +236,9 @@
   - Clean text extraction from public webpages
   - AI classification with structured fields
   - Deterministic validation and fallback handling
+  - Page-level fetch validation and failed-page suppression
+  - AI-output normalization guardrails
+  - Historical run-level assessment keys
   - Page-level brand-fit scoring
   - Company-level sponsor-fit aggregation
   - Airtable output for review-ready assessments
@@ -239,6 +274,11 @@
   - Add outreach-ready summaries
   - Add more Airtable review views for priority queues and follow-up tracking
   - Separate page-level and company-level MongoDB collections more cleanly
+  - Test and harden job-status updates so completed queued jobs do not rerun automatically
+  - Generalize Shopify utility-path exclusions such as `/collections/vendors`
+  - Add local-market fit scoring for Brooklyn/NYC presence
+  - Add partner-group-specific scoring for vendor, facility, experience, and brand partners
+  - Add human-readable top-evidence summaries for Airtable
 
   ---
 
