@@ -113,7 +113,7 @@
   → Page-level sponsor-fit scoring
   → MongoDB page evidence storage
   → Brand-level aggregation
-  → MongoDB aggregate assessment storage
+  → MongoDB company-level assessment storage
   → Airtable review output
   → Optional MongoDB job-status update
   ```
@@ -154,7 +154,9 @@
   Current brand assessment storage includes:
 
   - `brand_page_assessments`
-  - aggregate brand assessment records
+  - `brand_company_assessments`
+  - `brand_assessment_jobs`
+  - `config`
 
   ### Airtable
 
@@ -213,9 +215,19 @@
 
   ---
 
+  ## Review Output
+
+  Company-level assessments are written to Airtable so results can be reviewed, sorted, filtered, and prioritized by score, partner group, category, and recommended action.
+
+  <img width="1211" height="163" alt="airtable img" src="https://github.com/user-attachments/assets/0e4aef11-6081-4522-87d1-d93cdc99f516" />
+
+  ---
+
   ## Current Test Results
 
-  The workflow has been tested end-to-end on several partner categories:
+  The workflow has been tested end-to-end on several partner categories using Brooklyn Pickleball Team as the target sports-property context.
+
+  Note: These examples are prototype test runs using public-web data. They do not represent official partner recommendations or an affiliation with any listed organization.
 
   | Company | Category | Partner Group | Score | Conclusion |
   |---|---|---|---:|---|
@@ -224,7 +236,7 @@
   | SoftWave TRT | sports medicine and recovery | brand_partner | 54 | moderate brand fit |
   | Stella Blue Coffee | beverage / coffee | brand_partner | 39 | weak brand fit |
 
-  These tests validate that direct pickleball equipment brands rank above adjacent recovery, beverage, and lifestyle brands.
+  These tests validate that direct pickleball equipment brands rank above adjacent recovery, beverage, and lifestyle brands for the Brooklyn Pickleball Team context.
   
   ---
 
