@@ -96,26 +96,33 @@
   ```text
   MongoDB queued assessment job
   → Select active queued brand/company
+  → Attach runtime and taxonomy config
   → Brand root domain
-  → Homepage fetch
-  → Internal link discovery
+  → Homepage fetch with browser-like headers
+  → Attach homepage HTML and fetch metadata
+  → Internal link discovery with blocked-homepage detection
   → Relevant page filtering and role classification
-  → Fetch selected pages, up to 10 total
-  → Page-level fetch validation and failed-page suppression
-  → Clean text extraction
-  → Source metadata inference
-  → Pre-AI heuristics and priority sorting
+  → Fetch selected pages with browser-like headers, up to 10 total
+  → Page-level fetch validation for HTTP errors, 404s, and Cloudflare blocks
+  → Clean text extraction with evidence-snippet preservation
+  → Require usable page text
+     ├─ If text exists: pre-AI heuristics and priority sorting
+     └─ If text is missing: blocked/empty-page fallback assessment
   → Batch assignment, 2 pages per AI branch
   → Five AI classification branches
-  → Deterministic AI-output normalization and merge batch outputs
+  → Deterministic AI-output normalization
+  → Merge AI-classified pages and fallback page assessments
+  → Page classification guardrails
   → Validate page classifications
   → Fallback handling for weak or invalid AI output
+  → Assemble page assessment record
   → Page-level sponsor-fit scoring
+  → Compute assessment keys and signatures
   → MongoDB page evidence storage
   → Brand-level aggregation
   → MongoDB company-level assessment storage
   → Airtable review output
-  → Optional MongoDB job-status update
+  → MongoDB job-status update
   ```
 
   ---
@@ -124,24 +131,23 @@
 
   The current n8n workflow includes page discovery, text extraction, pre-AI heuristics, AI classification batches, validation, page-level scoring, company-level aggregation, and Airtable/MongoDB storage.
   
-  <img width="1670" height="294" alt="image" src="https://github.com/user-attachments/assets/945c0368-56ef-4144-8279-f25ad297b056" />
+  <img width="1754" height="333" alt="image" src="https://github.com/user-attachments/assets/ddd0b21c-f4cf-428b-8d93-3313f59347e6" />
 
   ---
 
-  ## Recent Reliability Update
+  ## Current Reliability Features
 
-  The workflow was recently updated to improve reliability, scoring quality, and reviewability across real brand tests.
+  The workflow includes several deterministic safeguards around public-web extraction and AI classification:
 
-  Current changes include:
-
-  - Added page-level fetch validation after discovered-page HTTP requests so failed pages, 404s, and page-not-found responses do not reach AI classification or scoring.
-  - Enabled non-fatal HTTP fetching for discovered pages, allowing one bad internal URL to be skipped without stopping the full assessment.
-  - Added deterministic Normalize nodes after every AI batch to correct common LLM overclaims, including contact pages, event listings, generic blog indexes, medical case-study pages, and unsupported athlete/pickleball language.
-  - Removed company-specific hardcoded cleanup language so normalization works across brands.
-  - Preserved `ai_raw_output` alongside normalized fields for auditability.
-  - Added batch metadata, text-length metadata, truncation flags, and page-level assessment keys for debugging and historical storage.
-  - Added aggregate evidence counts such as `evidence_page_count`, `strong_evidence_page_count`, and `high_fit_page_count`.
-  - Updated Airtable output so company-level assessments include partner group, evidence summaries, top evidence pages, source URLs, and scoring metadata.
+  - Homepage and discovered-page HTTP requests use browser-like headers such as `User-Agent`, `Accept`, `Accept-Language`, and `Cache-Control` to reduce avoidable 403/Cloudflare blocks.
+  - Blocked, failed, empty, and 404-like pages are detected before AI classification.
+  - Blocked pages can produce an insufficient-evidence fallback record instead of silently disappearing.
+  - Homepage discovery stops early when the fetched homepage is a Cloudflare/error page.
+  - Page discovery filters remove low-value utility paths, static assets, checkout/login pages, and unrelated noisy industry pages.
+  - AI batch outputs are normalized with deterministic guardrails for contact pages, generic blog indexes, trade-event pages, medical case studies, adult beverages, healthy beverages, software vendors, and non-core product category pages.
+  - Direct target-organization evidence is preserved for vendor/software partners that explicitly reference the target sports property.
+  - Page-level and aggregate outputs preserve raw AI output, normalized fields, evidence summaries, source URLs, scoring metadata, and run signatures.
+  - MongoDB job-status updates mark completed jobs with `last_run_at`, `last_run_id`, and cleared errors.
 
   ---
 
@@ -173,18 +179,29 @@
   ## Example Input
 
   
-  ### Brand Prospect Assessor Input
+  ### MongoDB Job Input
+
+  In normal operation, the workflow reads assessment jobs from `brand_assessment_jobs`. During testing, the MongoDB query can target one organization by `analyzed_organization`.
   
   ```json
   {
-    "target_organization": "Brooklyn Pickleball Team",
+    "active": true,
+    "status": "queued",
+    "partner_group": "brand_partner",
+    "target_organization": "Example Pickleball Team",
     "target_org_type": "sports team",
     "target_market": "pickleball / sports / events",
-    "analyzed_organization": "JOOLA",
+    "analyzed_organization": "Example Pickleball Equipment Brand",
     "analyzed_org_type": "brand",
-    "root_domain": "https://joola.com",
-    "partner_group": "brand_partner",
-    "relationship_context": "Potential or comparable brand partner for Brooklyn Pickleball Team"
+    "root_domain": "https://example.com",
+    "relationship_context": "Known or potential brand partner for Example Pickleball Team",
+    "config_version": "brand_assessment_v1",
+    "priority": "normal",
+    "created_at": "2026-05-01",
+    "updated_at": "2026-05-01",
+    "last_run_at": null,
+    "last_run_id": null,
+    "last_error": null
   }
   ```
 
@@ -196,8 +213,8 @@
 
   ```json
   {
-    "target_organization": "Brooklyn Pickleball Team",
-    "analyzed_organization": "JOOLA",
+    "target_organization": "Example Pickleball Team",
+    "analyzed_organization": "Example Pickleball Equipment Brand",
     "partner_group": "brand_partner",
     "company_category": "pickleball equipment",
     "business_model": "consumer sports equipment",
@@ -205,10 +222,10 @@
     "brand_fit_score": 100,
     "brand_fit_conclusion": "strong brand fit",
     "recommended_action": "prioritize outreach",
-    "primary_partnership_angle": "As a leading manufacturer of pickleball paddles and equipment, JOOLA is a natural partner for professional team sponsorship and gear supply.",
-    "page_count": 10,
-    "usable_page_count": 9,
-    "evidence_page_count": 9,
+    "primary_partnership_angle": "As a manufacturer of pickleball paddles and equipment, the company is a natural fit for team sponsorship, gear supply, and co-branded activations.",
+    "page_count": 9,
+    "usable_page_count": 8,
+    "evidence_page_count": 8,
     "aggregate_version": "brand_v1"
   }
   ```
@@ -219,24 +236,25 @@
 
   Company-level assessments are written to Airtable so results can be reviewed, sorted, filtered, and prioritized by score, partner group, category, and recommended action.
 
-  <img width="1211" height="163" alt="airtable img" src="https://github.com/user-attachments/assets/0e4aef11-6081-4522-87d1-d93cdc99f516" />
-
   ---
 
   ## Current Test Results
 
-  The workflow has been tested end-to-end on several partner categories using Brooklyn Pickleball Team as the target sports-property context.
+  The workflow has been tested end-to-end on several partner categories using an example pickleball team as the target sports-property context.
 
-  Note: These examples are prototype test runs using public-web data. They do not represent official partner recommendations or an affiliation with any listed organization.
+  Note: These examples are anonymized prototype test results derived from public-web data. They are shown as category-level examples only and do not represent official partner recommendations, endorsements, or affiliations with any
+  listed organization.
 
-  | Company | Category | Partner Group | Score | Conclusion |
+  | Example Company Type | Category | Partner Group | Score | Conclusion |
   |---|---|---|---:|---|
-  | JOOLA | pickleball equipment | brand_partner | 100 | strong brand fit |
-  | KA-EX | wellness and recovery beverage | brand_partner | 56 | moderate brand fit |
-  | SoftWave TRT | sports medicine and recovery | brand_partner | 54 | moderate brand fit |
-  | Stella Blue Coffee | beverage / coffee | brand_partner | 39 | weak brand fit |
+  | Pickleball equipment brand | pickleball equipment | brand_partner | 100 | strong brand fit |
+  | Pickleball travel company | pickleball travel and experiences | experience_partner | 100 | strong brand fit |
+  | Insurance/risk services firm | insurance and risk management | vendor_partner | 47 | moderate brand fit |
+  | Hydration beverage brand | hydration beverage | brand_partner | 41 | moderate brand fit |
+  | Coffee brand | beverage / coffee | brand_partner | 39 | weak brand fit |
+  | Adult beverage brand | adult beverage | brand_partner | 30 | weak brand fit |
 
-  These tests validate that direct pickleball equipment brands rank above adjacent recovery, beverage, and lifestyle brands for the Brooklyn Pickleball Team context.
+  These tests validate that direct pickleball and experience partners rank highest, while adjacent beverage, lifestyle, vendor, insurance, and recovery categories receive more conservative review scores.
   
   ---
 
@@ -278,7 +296,6 @@
   
   ## Roadmap
 
-  - Add dedupe/upsert logic to the brand assessment workflow
   - Add material-change detection for repeated brand scans
   - Reduce AI token usage with tighter page selection and text limits
   - Batch assessment across multiple brands
@@ -286,10 +303,10 @@
   - Add outreach-ready summaries
   - Add more Airtable review views for priority queues and follow-up tracking
   - Separate page-level and company-level MongoDB collections more cleanly
-  - Test and harden job-status updates so completed queued jobs do not rerun automatically
-  - Generalize Shopify utility-path exclusions such as `/collections/vendors`
-  - Add local-market fit scoring for Brooklyn/NYC presence
-  - Add partner-group-specific scoring for vendor, facility, experience, and brand partners
+  - Add upsert/dedupe behavior for Airtable and MongoDB aggregate records
+  - Add seed URL support for known high-value pages such as sports insurance, sponsorship, or partner pages
+  - Add browser-rendered fetch fallback for sites that require JavaScript or advanced bot protection
+  - Add category-specific page summary guardrails for apparel, recovery, accessories, and service pages
   - Add human-readable top-evidence summaries for Airtable
 
   ---
