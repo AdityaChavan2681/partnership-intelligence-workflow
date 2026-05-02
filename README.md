@@ -103,7 +103,7 @@
   → Internal link discovery with blocked-homepage detection
   → Relevant page filtering and role classification
   → Fetch selected pages with browser-like headers, up to 10 total
-  → Page-level fetch validation for HTTP errors, 404s, and Cloudflare blocks
+  → Page-level fetch validation for HTTP errors, hard/soft 404s, empty pages, and Cloudflare blocks
   → Clean text extraction with evidence-snippet preservation
   → Require usable page text
      ├─ If text exists: pre-AI heuristics and priority sorting
@@ -121,8 +121,8 @@
   → MongoDB page evidence storage
   → Brand-level aggregation
   → MongoDB company-level assessment storage
-  → Airtable review output
-  → MongoDB job-status update
+    ├─ Optional Airtable review output
+    └─ MongoDB job-status update
   ```
 
   ---
@@ -148,6 +148,10 @@
   - Direct target-organization evidence is preserved for vendor/software partners that explicitly reference the target sports property.
   - Page-level and aggregate outputs preserve raw AI output, normalized fields, evidence summaries, source URLs, scoring metadata, and run signatures.
   - MongoDB job-status updates mark completed jobs with `last_run_at`, `last_run_id`, and cleared errors.
+  - Page validation catches both hard 404s and soft 404 pages such as "No Results Found" pages before AI classification.
+  - Blocked, failed, empty, hard-404, and soft-404 pages produce insufficient-evidence fallback records with zero page score.
+  - Runtime and taxonomy configuration are loaded from MongoDB config documents, with validation to prevent missing or duplicate active config docs.
+  - Airtable is treated as an optional review layer; MongoDB result storage and job-status updates do not depend on Airtable success.
 
   ---
 
@@ -160,13 +164,13 @@
   Current brand assessment storage includes:
 
   - `brand_page_assessments`
-  - `brand_company_assessments`
+  - `brand_assessments`
   - `brand_assessment_jobs`
   - `config`
 
   ### Airtable
 
-  Airtable is used as the human-facing review layer.
+  Airtable is used as an optional human-facing review layer.
 
   Current Airtable review output uses:
 
@@ -302,12 +306,13 @@
   - Rank brands across sponsor categories
   - Add outreach-ready summaries
   - Add more Airtable review views for priority queues and follow-up tracking
-  - Separate page-level and company-level MongoDB collections more cleanly
+  - Add stronger upsert/dedupe behavior for MongoDB and optional Airtable records
   - Add upsert/dedupe behavior for Airtable and MongoDB aggregate records
   - Add seed URL support for known high-value pages such as sports insurance, sponsorship, or partner pages
   - Add browser-rendered fetch fallback for sites that require JavaScript or advanced bot protection
   - Add category-specific page summary guardrails for apparel, recovery, accessories, and service pages
   - Add human-readable top-evidence summaries for Airtable
+  - Move more hardcoded category, guardrail, and controlled-value logic into MongoDB taxonomy/runtime config
 
   ---
 
