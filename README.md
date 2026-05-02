@@ -131,7 +131,7 @@
 
   The current n8n workflow includes page discovery, text extraction, pre-AI heuristics, AI classification batches, validation, page-level scoring, company-level aggregation, and Airtable/MongoDB storage.
   
-  <img width="1754" height="333" alt="image" src="https://github.com/user-attachments/assets/ddd0b21c-f4cf-428b-8d93-3313f59347e6" />
+  <img width="1622" height="307" alt="image" src="https://github.com/user-attachments/assets/92cd7dd5-a26b-470a-8b85-00c2410c816a" />
 
   ---
 
