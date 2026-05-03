@@ -34,7 +34,7 @@
   - Page-level brand-fit scoring
   - Company-level sponsor-fit aggregation
   - MongoDB storage for evidence and history
-  - Airtable output for review-ready assessments
+  - Optional Airtable output for review-ready assessments
 
   ---
 
@@ -66,7 +66,7 @@
 
   Selected pages are sorted by AI priority, assigned into batches of two pages, and routed across five AI classification branches. The branches share one Gemini chat model connection and use staggered waits plus retry handling for more stable structured classification under provider rate limits.
 
-  After classification, batch outputs are normalized, merged, validated, scored at the page level, stored in MongoDB, and aggregated into one company-level brand assessment for MongoDB and Airtable.
+  After classification, batch outputs are normalized, merged, validated, scored at the page level, stored in MongoDB, and aggregated into one company-level brand assessment for MongoDB, with optional Airtable review output.
 
   ### Main Outputs
 
@@ -120,9 +120,9 @@
   → Compute assessment keys and signatures
   → MongoDB page evidence storage
   → Brand-level aggregation
-  → MongoDB company-level assessment storage
-    ├─ Optional Airtable review output
-    └─ MongoDB job-status update
+     ├─ MongoDB company-level assessment storage
+     ├─ Optional Airtable review output
+     └─ MongoDB job-status update
   ```
 
   ---
@@ -131,7 +131,7 @@
 
   The current n8n workflow includes page discovery, text extraction, pre-AI heuristics, AI classification batches, validation, page-level scoring, company-level aggregation, and Airtable/MongoDB storage.
   
-  <img width="1605" height="349" alt="image" src="https://github.com/user-attachments/assets/51653cfd-b9d7-4173-8970-68ab9a49635c" />
+  <img width="1551" height="329" alt="image" src="https://github.com/user-attachments/assets/6844d993-52be-4d33-ad32-44b072704f9a" />
 
   ---
 
@@ -307,7 +307,6 @@
   - Add outreach-ready summaries
   - Add more Airtable review views for priority queues and follow-up tracking
   - Add stronger upsert/dedupe behavior for MongoDB and optional Airtable records
-  - Add upsert/dedupe behavior for Airtable and MongoDB aggregate records
   - Add seed URL support for known high-value pages such as sports insurance, sponsorship, or partner pages
   - Add browser-rendered fetch fallback for sites that require JavaScript or advanced bot protection
   - Add category-specific page summary guardrails for apparel, recovery, accessories, and service pages
