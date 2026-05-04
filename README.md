@@ -152,6 +152,7 @@
   - Blocked, failed, empty, hard-404, and soft-404 pages produce insufficient-evidence fallback records with zero page score.
   - Runtime and taxonomy configuration are loaded from MongoDB config documents, with validation to prevent missing or duplicate active config docs.
   - Airtable is treated as an optional review layer; MongoDB result storage and job-status updates do not depend on Airtable success.
+  - Vendor/software guardrails distinguish generic B2B software from sports facility software such as court reservation, club management, event management, and facility operations platforms.
 
   ---
 
@@ -253,12 +254,14 @@
   |---|---|---|---:|---|
   | Pickleball equipment brand | pickleball equipment | brand_partner | 100 | strong brand fit |
   | Pickleball travel company | pickleball travel and experiences | experience_partner | 100 | strong brand fit |
+  | Sports facility software vendor | sports facility software | vendor_partner | 82 | promising brand fit |
   | Insurance/risk services firm | insurance and risk management | vendor_partner | 47 | moderate brand fit |
   | Hydration beverage brand | hydration beverage | brand_partner | 41 | moderate brand fit |
   | Coffee brand | beverage / coffee | brand_partner | 39 | weak brand fit |
   | Adult beverage brand | adult beverage | brand_partner | 30 | weak brand fit |
 
-  These tests validate that direct pickleball and experience partners rank highest, while adjacent beverage, lifestyle, vendor, insurance, and recovery categories receive more conservative review scores.
+  These tests validate that direct pickleball and experience partners rank highest, while adjacent beverage, lifestyle, vendor, insurance, recovery, and facility-software categories receive more conservative review scores based on their
+  evidence type.
   
   ---
 
@@ -275,7 +278,7 @@
   - Historical run-level assessment keys
   - Page-level brand-fit scoring
   - Company-level sponsor-fit aggregation
-  - Airtable output for review-ready assessments
+  - Optional Airtable output for review-ready assessments
   - MongoDB storage for page-level evidence and aggregate assessments
   - Early scan-memory and change-detection support
 
@@ -311,7 +314,7 @@
   - Add browser-rendered fetch fallback for sites that require JavaScript or advanced bot protection
   - Add category-specific page summary guardrails for apparel, recovery, accessories, and service pages
   - Add human-readable top-evidence summaries for Airtable
-  - Move more hardcoded category, guardrail, and controlled-value logic into MongoDB taxonomy/runtime config
+  - Move more hardcoded category, guardrail, and controlled-value logic into MongoDB taxonomy/runtime config, including reusable taxonomy matching before AI classification
 
   ---
 
