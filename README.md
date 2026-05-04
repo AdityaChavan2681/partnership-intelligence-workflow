@@ -29,6 +29,7 @@
   - Clean text extraction from public webpages
   - Source metadata inference
   - Pre-AI heuristics
+  - Multi-page company context extraction before page-level classification
   - AI-assisted page classification
   - Deterministic validation and fallback handling
   - Page-level brand-fit scoring
@@ -56,6 +57,8 @@
   - Contact pages as supporting context only
 
   Each page is classified and scored individually. The workflow then aggregates the strongest page-level evidence into one company-level sponsor-fit assessment.
+
+  Before page-level AI classification, the workflow also builds a multi-page company context summary from selected pages. This helps identify what the analyzed organization primarily does across its public website, while still keeping final scoring grounded in each page’s own evidence.
 
   ### Page Discovery and Batch Processing
 
@@ -106,8 +109,11 @@
   → Page-level fetch validation for HTTP errors, hard/soft 404s, empty pages, and Cloudflare blocks
   → Clean text extraction with evidence-snippet preservation
   → Require usable page text
-     ├─ If text exists: pre-AI heuristics and priority sorting
+     ├─ If text exists: pre-AI heuristics, taxonomy hints, and priority sorting
      └─ If text is missing: blocked/empty-page fallback assessment
+  → Build multi-page company context input from selected usable pages
+  → Extract company-level context from multiple webpages
+  → Attach company context back to page-level records
   → Batch assignment, 2 pages per AI branch
   → Five AI classification branches
   → Deterministic AI-output normalization
@@ -129,9 +135,9 @@
 
   ## Pipeline Snapshot
 
-  The current n8n workflow includes page discovery, text extraction, pre-AI heuristics, AI classification batches, validation, page-level scoring, company-level aggregation, and Airtable/MongoDB storage.
+  The current n8n workflow includes page discovery, text extraction, pre-AI heuristics, multi-page company context extraction with a Gemini model and wait timer, AI classification batches, validation, page-level scoring, company-level aggregation, and Airtable/MongoDB storage.
   
-  <img width="1551" height="329" alt="image" src="https://github.com/user-attachments/assets/6844d993-52be-4d33-ad32-44b072704f9a" />
+  <img width="1658" height="299" alt="image" src="https://github.com/user-attachments/assets/c8100852-e872-49b2-b87f-906cf8d23036" />
 
   ---
 
@@ -153,6 +159,10 @@
   - Runtime and taxonomy configuration are loaded from MongoDB config documents, with validation to prevent missing or duplicate active config docs.
   - Airtable is treated as an optional review layer; MongoDB result storage and job-status updates do not depend on Airtable success.
   - Vendor/software guardrails distinguish generic B2B software from sports facility software such as court reservation, club management, event management, and facility operations platforms.
+  - Multi-page company context extraction helps distinguish what the analyzed organization primarily does from noisy page-level keyword matches.
+  - Company-level context is attached back to page records before AI batching, while page scoring remains grounded in current-page evidence.
+  - Apparel and activewear guardrails prevent general lifestyle brands from being over-scored as direct pickleball fits without explicit court-sport, venue, event, athlete, or sponsorship evidence.
+  - Control tests include both relevant and non-relevant companies to verify that the workflow does not force weak prospects into sponsor categories.
 
   ---
 
@@ -254,20 +264,22 @@
   |---|---|---|---:|---|
   | Pickleball equipment brand | pickleball equipment | brand_partner | 100 | strong brand fit |
   | Pickleball travel company | pickleball travel and experiences | experience_partner | 100 | strong brand fit |
-  | Sports facility software vendor | sports facility software | vendor_partner | 82 | promising brand fit |
+  | Sports facility software vendor | sports facility software | vendor_partner | 86 | strong brand fit |
+  | Activewear/lifestyle apparel brand | sports apparel | brand_partner | 61 | moderate brand fit |
+  | General productivity software control | software | brand_partner | 7 | weak brand fit |
   | Insurance/risk services firm | insurance and risk management | vendor_partner | 47 | moderate brand fit |
   | Hydration beverage brand | hydration beverage | brand_partner | 41 | moderate brand fit |
   | Coffee brand | beverage / coffee | brand_partner | 39 | weak brand fit |
   | Adult beverage brand | adult beverage | brand_partner | 30 | weak brand fit |
 
-  These tests validate that direct pickleball and experience partners rank highest, while adjacent beverage, lifestyle, vendor, insurance, recovery, and facility-software categories receive more conservative review scores based on their
-  evidence type.
+  These tests validate that direct pickleball and experience partners rank highest, facility-software vendors can be recognized as vendor partners, adjacent activewear and beverage brands receive more conservative mid-tier scores, and unrelated control companies remain low-fit instead of being forced into sponsor categories.
   
   ---
 
   ## Key Capabilities
 
   - Multi-page brand/company assessment
+  - Multi-page company context extraction before page-level AI classification
   - Homepage-based internal page discovery
   - Source metadata inference
   - Clean text extraction from public webpages
@@ -286,7 +298,7 @@
 
   ## Prototype History
 
-  This project began as a sports-property signal scanner for Brooklyn Pickleball Team pages such as brand partners, past events, and latest news.
+  This project began as a sports-property signal scanner for an example pickleball team, including pages such as brand partners, past events, and latest news.
 
   That prototype established the core system patterns:
 
