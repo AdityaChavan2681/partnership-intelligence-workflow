@@ -9,7 +9,7 @@
   The system is designed to answer:
 
   ```text
-  Given a target sports property and an outside company,
+  Given a target sport, league, event, venue, or sports property and an outside company,
   is this company a credible sponsor or partner prospect?
   ```
 
@@ -35,6 +35,8 @@
   - Company-level sponsor-fit aggregation
   - MongoDB storage for evidence and history
   - Airtable output for review-ready assessments
+  - Apollo and Clay-assisted company enrichment
+  - Prospect contact-role staging for future person enrichment
 
   ---
 
@@ -42,7 +44,7 @@
 
   The Brand Prospect Assessor evaluates an outside brand or company as a potential sponsor or partner for a target sports property, and can also generate review-ready outreach drafts from the strongest results.
 
-  Assessment jobs are loaded from a MongoDB-backed `brand_assessment_jobs` queue. Jobs can come from manual input or from the Apollo prospect intake branch, which discovers companies, normalizes them into queued jobs, and stores them in MongoDB for assessment.
+  Assessment jobs are loaded from a MongoDB-backed `brand_assessment_jobs` queue. Jobs can come from manual input, Apollo prospect intake, or Clay-assisted enrichment flows. Apollo discovers companies and normalizes them into queued jobs, while Clay receives company payloads through a webhook for enrichment and reference-data expansion.
 
   During testing, the workflow can target a specific queued organization by adding `analyzed_organization` to the MongoDB query; in normal operation, it can select active queued jobs from the collection.
 
@@ -103,7 +105,8 @@
   ```text
   MongoDB queued assessment job
   → Select active queued brand/company
-  → Apollo prospect intake or manual job selection
+  → Apollo prospect intake, Clay enrichment handoff, or manual job selection
+  → Optional Clay webhook company enrichment
   → Attach runtime and taxonomy config
   → Brand root domain
   → Homepage fetch with browser-like headers
@@ -130,21 +133,22 @@
   → Page-level sponsor-fit scoring
   → Compute assessment keys and signatures
   → MongoDB page evidence storage
-  → Brand-level aggregation
-     ├─ MongoDB company-level assessment storage
-     ├─ Airtable review output for brand assessments
-     ├─ MongoDB outreach draft storage
-     └─ Airtable outreach review queue
-  → MongoDB job-status update
+→ Brand-level aggregation
+       ├─ MongoDB company-level assessment storage
+       ├─ Airtable review output for brand assessments
+       ├─ MongoDB outreach draft storage
+       ├─ Airtable outreach review queue
+       └─ Airtable prospect contact-role staging
+    → MongoDB job-status update
   ```
 
   ---
 
   ## Pipeline Snapshot
 
-  The current n8n workflow includes Apollo prospect intake, page discovery, text extraction, pre-AI heuristics, multi-page company context extraction with a Gemini model and wait timer, AI classification batches, validation, page-level scoring, company-level aggregation, MongoDB storage, and Airtable review outputs for both brand assessments and outreach drafts.
+  The current n8n workflow includes Apollo prospect intake, Clay webhook handoff, page discovery, text extraction, pre-AI heuristics, multi-page company context extraction with a Gemini model and wait timer, AI classification batches, validation, page-level scoring, company-level aggregation, MongoDB storage, Airtable review outputs, and prospect contact-role staging.
   
-  <img width="1505" height="395" alt="image" src="https://github.com/user-attachments/assets/4ca2f18e-ea4c-4c64-a3c8-75745b083a11" />
+  <img width="1285" height="255" alt="image" src="https://github.com/user-attachments/assets/01bd8ae0-e8eb-4571-9eb8-cbfa967c1ece" />
 
   ---
 
@@ -152,6 +156,7 @@
 
   The workflow includes several deterministic safeguards around public-web extraction and AI classification:
 
+  - Live website evidence can override enrichment metadata when a company domain appears unrelated, stale, parked, spammy, or inconsistent with the expected organization.
   - Homepage and discovered-page HTTP requests use browser-like headers such as `User-Agent`, `Accept`, `Accept-Language`, and `Cache-Control` to reduce avoidable 403/Cloudflare blocks.
   - Blocked, failed, empty, and 404-like pages are detected before AI classification.
   - Blocked pages can produce an insufficient-evidence fallback record instead of silently disappearing.
@@ -189,15 +194,28 @@
 
   ### Airtable
 
-  Airtable is used as an human-facing review layer.
+  Airtable is used as a human-facing review layer.
 
   Current Airtable review outputs use:
 
+  - `company_enrichment`
   - `brand_assessments`
+  - `prospect_contacts`
   - `outreach_review_queue`
 
+  The `company_enrichment` table stores Clay/Apollo-enriched company reference records.
   The `brand_assessments` table stores company-level sponsor-fit assessments.
+  The `prospect_contacts` table stores recommended contact-role placeholders and future person-level enrichment records.
   The `outreach_review_queue` table stores review-ready outreach drafts.
+
+  ---
+
+  ## Integrations
+
+  - Apollo: prospect company discovery and initial company metadata
+  - Clay: webhook-based company enrichment handoff
+  - MongoDB: queue, evidence storage, assessment history, and outreach draft records
+  - Airtable: human-facing review layer for assessments, contacts, and outreach drafts
 
   ---
 
@@ -214,12 +232,12 @@
     "status": "queued",
     "partner_group": "brand_partner",
     "target_organization": "Example Pickleball Team",
-    "target_org_type": "sports team",
+    "target_org_type": "sport",
     "target_market": "pickleball / sports / events",
     "analyzed_organization": "Example Pickleball Equipment Brand",
     "analyzed_org_type": "brand",
     "root_domain": "https://example.com",
-    "relationship_context": "Known or potential brand partner for Example Pickleball Team",
+    "relationship_context": "Known or potential brand partner for the pickleball ecosystem",
     "config_version": "brand_assessment_v1",
     "priority": "normal",
     "created_at": "2026-05-01",
@@ -238,7 +256,7 @@
 
   ```json
   {
-    "target_organization": "Example Pickleball Team",
+    "target_organization": "Pickleball",
     "analyzed_organization": "Example Pickleball Equipment Brand",
     "partner_group": "brand_partner",
     "company_category": "pickleball equipment",
@@ -247,7 +265,7 @@
     "brand_fit_score": 100,
     "brand_fit_conclusion": "strong brand fit",
     "recommended_action": "prioritize outreach",
-    "primary_partnership_angle": "As a manufacturer of pickleball paddles and equipment, the company is a natural fit for team sponsorship, gear supply, and co-branded activations.",
+    "primary_partnership_angle": "As a manufacturer of pickleball paddles and equipment, the company is a natural fit for sponsorship, gear supply, events, community activations, and co-branded campaigns across the pickleball ecosystem.",
     "page_count": 9,
     "usable_page_count": 8,
     "evidence_page_count": 8,
@@ -259,13 +277,13 @@
 
   ## Review Output
 
-  Company-level assessments are written to Airtable for review, and outreach drafts are written to a separate Airtable review queue for approval before any send step is added.
+  Company-level assessments are written to Airtable for review, outreach drafts are written to a separate Airtable review queue, and recommended contact roles are staged in `prospect_contacts` before any send step is added.
 
   ---
 
   ## Current Test Results
 
-  The workflow has been tested end-to-end on several partner categories using an example pickleball team as the target sports-property context.
+  The workflow has been tested end-to-end on several partner categories using pickleball as the target sport and market context.
 
   Note: These examples are anonymized prototype test results derived from public-web data. They are shown as category-level examples only and do not represent official partner recommendations, endorsements, or affiliations with any
   listed organization.
@@ -281,6 +299,8 @@
   | Hydration beverage brand | hydration beverage | brand_partner | 41 | moderate brand fit |
   | Coffee brand | beverage / coffee | brand_partner | 39 | weak brand fit |
   | Adult beverage brand | adult beverage | brand_partner | 30 | weak brand fit |
+
+  A recent control run also confirmed that when enrichment metadata suggested a pickleball facility but the live website showed unrelated/spam-like content, the workflow produced a zero-score weak-fit result instead of forcing a false positive.
 
   These tests validate that direct pickleball and experience partners rank highest, facility-software vendors can be recognized as vendor partners, Apollo-discovered prospects can be normalized into the same assessment queue, and outreach drafts can be reviewed separately in Airtable before any send step is added.
   
@@ -300,6 +320,9 @@
   - Historical run-level assessment keys
   - Page-level brand-fit scoring
   - Company-level sponsor-fit aggregation
+  - Apollo prospect intake
+  - Clay webhook-based enrichment handoff
+  - Prospect contact-role staging in Airtable
   - Airtable output for review-ready assessments and outreach review
   - MongoDB storage for page-level evidence and aggregate assessments
   - Early scan-memory and change-detection support
@@ -308,7 +331,7 @@
 
   ## Prototype History
 
-  This project began as a sports-property signal scanner for an example pickleball team, including pages such as brand partners, past events, and latest news.
+  This project began as a sports-property signal scanner and has since been broadened toward pickleball ecosystem intelligence, including brands, facilities, events, leagues, media, and sponsorship signals.
 
   That prototype established the core system patterns:
 
@@ -338,6 +361,8 @@
   - Add human-readable top-evidence summaries for Airtable
   - Move more hardcoded category, guardrail, and controlled-value logic into MongoDB taxonomy/runtime config, including reusable taxonomy matching before AI classification
   - Add Airtable outreach approval status tracking
+  - Add real Apollo/Clay person-level contact enrichment into `prospect_contacts`
+  - Add Clay-to-n8n return webhook for enriched company data
   - Add Smartlead or Instantly send-step integration after approval
 
   ---
@@ -361,6 +386,8 @@
   - Outreach prioritization
   - Sponsorship category research
   - Historical monitoring of public commercial signals
+  - Sport-level partnership intelligence
+  - Ecosystem-level sponsor discovery
 
   ## Why This Matters
 
