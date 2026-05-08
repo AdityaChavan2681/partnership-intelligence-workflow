@@ -2,9 +2,10 @@
 
   ### Brand Prospect Assessment, Sponsor-Fit Scoring, and Public-Web Partnership Intelligence
 
-  A public-web intelligence pipeline for evaluating outside brands and companies as potential sponsors or partners for a target sports property.
+  A public-web intelligence pipeline for evaluating companies as potential sponsors or partners within a target sports market.
 
-  The current workflow starts from a brand root domain, discovers relevant internal pages, extracts public evidence, classifies sponsor-fit signals, scores each page, and aggregates the strongest evidence into a company-level brand assessment.
+  The current workflow focuses on the pickleball ecosystem. It uses Apollo and Clay for prospect discovery/enrichment, n8n for orchestration, MongoDB for queueing and evidence history, Gemini for structured classification, and Airtable
+  for review-ready outputs.
 
   The system is designed to answer:
 
@@ -17,96 +18,33 @@
 
   ## Overview
 
-  Partnership teams often evaluate sponsor prospects from scattered public signals: homepages, product pages, partner pages, athlete pages, event pages, news posts, and contact pages. These signals are useful, but they are noisy and
-  difficult to compare manually.
+  Partnership teams often evaluate sponsor prospects from scattered public signals: homepages, product pages, partner pages, athlete pages, event pages, news posts, media pages, and contact pages. These signals are useful, but they are noisy and difficult to compare manually.
 
-  This project converts that public evidence into structured sponsor-prospect intelligence that can be scored, reviewed, stored, and monitored over time.
+  This project converts that public evidence into structured sponsor-prospect intelligence that can be scored, reviewed, stored, retried, and monitored over time.
 
-  The pipeline uses a hybrid approach:
+  The pipeline combines:
 
-  - Homepage-based page discovery
-  - Clean text extraction from public webpages
-  - Source metadata inference
-  - Pre-AI heuristics
-  - Multi-page company context extraction before page-level classification
-  - AI-assisted page classification
-  - Deterministic validation and fallback handling
-  - Page-level brand-fit scoring
-  - Company-level sponsor-fit aggregation
-  - MongoDB storage for evidence and history
-  - Airtable output for review-ready assessments
-  - Apollo and Clay-assisted company enrichment
-  - Prospect contact-role staging for future person enrichment
-
-  ---
-
-  ## Current Workflow: Brand Prospect Assessor
-
-  The Brand Prospect Assessor evaluates an outside brand or company as a potential sponsor or partner for a target sports property, and can also generate review-ready outreach drafts from the strongest results.
-
-  Assessment jobs are loaded from a MongoDB-backed `brand_assessment_jobs` queue. Jobs can come from manual input, Apollo prospect intake, or Clay-assisted enrichment flows. Apollo discovers companies and normalizes them into queued jobs, while Clay receives company payloads through a webhook for enrichment and reference-data expansion.
-
-  During testing, the workflow can target a specific queued organization by adding `analyzed_organization` to the MongoDB query; in normal operation, it can select active queued jobs from the collection.
-
-  Starting from a brand root domain, it discovers and evaluates relevant pages such as:
-
-  - Homepage
-  - About page
-  - Product/category pages
-  - Partner/sponsorship pages
-  - Blog/news pages
-  - Events/athlete pages
-  - Contact pages as supporting context only
-
-  Each page is classified and scored individually. The workflow then aggregates the strongest page-level evidence into one company-level sponsor-fit assessment.
-
-  Before page-level AI classification, the workflow also builds a multi-page company context summary from selected pages. This helps identify what the analyzed organization primarily does across its public website, while still keeping final scoring grounded in each page’s own evidence.
-
-  ### Page Discovery and Batch Processing
-
-  The workflow starts from a single brand root domain and fetches the homepage. It then discovers internal links from that homepage, filters out low-value paths such as cart, checkout, login, privacy, terms, shipping, search, sale, and static asset URLs, and classifies the remaining pages by role.
-
-  The current crawl configuration evaluates up to 10 selected pages across roles such as homepage, about, contact, product/category, blog/news, partner/sponsorship, and events/athlete pages.
-
-  Selected pages are sorted by AI priority, assigned into batches of two pages, and routed across five AI classification branches. The branches share one Gemini chat model connection and use staggered waits plus retry handling for more stable structured classification under provider rate limits.
-
-  After classification, batch outputs are normalized, merged, validated, scored at the page level, stored in MongoDB, and aggregated into one company-level brand assessment, with Airtable review output for assessments and outreach drafts.
-
-  ### Main Outputs
-
-  - `brand_fit_score`
-  - `brand_fit_conclusion`
-  - `recommended_action`
-  - `company_category`
-  - `business_model`
-  - `recommended_offer`
-  - `primary_partnership_angle`
-  - `primary_evidence_summary`
-  - `source_urls`
-  - `page_count`
-  - `usable_page_count`
-  - `brand_result_signature`
-  - `partner_group`
-  - `evidence_page_count`
-  - `strong_evidence_page_count`
-  - `high_fit_page_count`
-  - `top_evidence_pages`
-  - `brand_key`
-  - `outreach_stage`
-  - `approval_status`
-  - `contact_role_targets`
-  - `outreach_subject`
-  - `outreach_body`
+  - Apollo prospect discovery
+  - Clay company enrichment handoff
+  - n8n workflow orchestration
+  - MongoDB queue, evidence, retry, and history storage
+  - Public website discovery and text extraction
+  - Gemini-assisted company and page classification
+  - Deterministic scoring and quality gates
+  - Airtable review outputs for assessments, rankings, contacts, and outreach
 
   ---
 
   ## Architecture
 
   ```text
-  MongoDB queued assessment job
-  → Select active queued brand/company
-  → Apollo prospect intake, Clay enrichment handoff, or manual job selection
-  → Optional Clay webhook company enrichment
+  Manual workflow trigger
+  → Apollo prospect intake
+  → Normalize discovered companies into lightweight candidate jobs
+  → Dedupe against existing MongoDB jobs by source ID and root domain
+     ├─ If new prospects exist: queue them in MongoDB and send optional Clay enrichment handoff
+     └─ If no new prospects exist: continue to queued/retryable assessment jobs
+  → Select queued, needs-retry, or provider-failed assessment job
   → Attach runtime and taxonomy config
   → Brand root domain
   → Homepage fetch with browser-like headers
@@ -123,6 +61,9 @@
   → Extract company-level context from multiple webpages
   → Attach company context back to page-level records
   → Batch assignment, 2 pages per AI branch
+  → Gemini company-context and page-classification extraction with retry/backoff
+     ├─ If AI succeeds: continue to page validation and scoring
+     └─ If provider fails: mark job as failed_provider / needs_retry instead of publishing
   → Five AI classification branches
   → Deterministic AI-output normalization
   → Merge AI-classified pages and fallback page assessments
@@ -144,37 +85,82 @@
 
   ---
 
-  ## Pipeline Snapshot
+  ## Data Flow
 
-  The current n8n workflow includes Apollo prospect intake, Clay webhook handoff, page discovery, text extraction, pre-AI heuristics, multi-page company context extraction with a Gemini model and wait timer, AI classification batches, validation, page-level scoring, company-level aggregation, MongoDB storage, Airtable review outputs, and prospect contact-role staging.
-  
-  <img width="1285" height="255" alt="image" src="https://github.com/user-attachments/assets/01bd8ae0-e8eb-4571-9eb8-cbfa967c1ece" />
+  The pipeline starts with external prospect sources, not manual database records.
+
+  ```text
+  Apollo company discovery
+  → optional Clay enrichment/reference data
+  → n8n normalization and dedupe
+  → MongoDB operational queue
+  → public website discovery and evidence extraction
+  → Gemini-assisted classification
+  → deterministic scoring and quality gates
+  → MongoDB evidence/history storage
+  → Airtable review outputs
+
+  - Apollo supplies company discovery input.
+  - Clay enriches company/reference data and can return enriched fields to n8n.
+  - MongoDB stores the operational queue, dedupe state, retry state, evidence, and assessment history.
+  - Airtable stores human-facing review outputs.
+  ```
 
   ---
 
-  ## Current Reliability Features
+  ## Current Workflow
 
-  The workflow includes several deterministic safeguards around public-web extraction and AI classification:
+  The Brand Prospect Assessor evaluates an outside company as a potential sponsor or partner for a target sports market.
 
-  - Live website evidence can override enrichment metadata when a company domain appears unrelated, stale, parked, spammy, or inconsistent with the expected organization.
-  - Homepage and discovered-page HTTP requests use browser-like headers such as `User-Agent`, `Accept`, `Accept-Language`, and `Cache-Control` to reduce avoidable 403/Cloudflare blocks.
-  - Blocked, failed, empty, and 404-like pages are detected before AI classification.
-  - Blocked pages can produce an insufficient-evidence fallback record instead of silently disappearing.
-  - Homepage discovery stops early when the fetched homepage is a Cloudflare/error page.
-  - Page discovery filters remove low-value utility paths, static assets, checkout/login pages, and unrelated noisy industry pages.
-  - AI batch outputs are normalized with deterministic guardrails for contact pages, generic blog indexes, trade-event pages, medical case studies, adult beverages, healthy beverages, software vendors, and non-core product category pages.
-  - Direct target-organization evidence is preserved for vendor/software partners that explicitly reference the target sports property.
-  - Page-level and aggregate outputs preserve raw AI output, normalized fields, evidence summaries, source URLs, scoring metadata, and run signatures.
-  - MongoDB job-status updates mark completed jobs with `last_run_at`, `last_run_id`, and cleared errors.
-  - Page validation catches both hard 404s and soft 404 pages such as "No Results Found" pages before AI classification.
-  - Blocked, failed, empty, hard-404, and soft-404 pages produce insufficient-evidence fallback records with zero page score.
-  - Runtime and taxonomy configuration are loaded from MongoDB config documents, with validation to prevent missing or duplicate active config docs.
-  - Airtable is treated as a review layer; MongoDB result storage and job-status updates do not depend on Airtable success.
-  - Vendor/software guardrails distinguish generic B2B software from sports facility software such as court reservation, club management, event management, and facility operations platforms.
-  - Multi-page company context extraction helps distinguish what the analyzed organization primarily does from noisy page-level keyword matches.
-  - Company-level context is attached back to page records before AI batching, while page scoring remains grounded in current-page evidence.
-  - Apparel and activewear guardrails prevent general lifestyle brands from being over-scored as direct pickleball fits without explicit court-sport, venue, event, athlete, or sponsorship evidence.
-  - Control tests include both relevant and non-relevant companies to verify that the workflow does not force weak prospects into sponsor categories.
+  Prospects can enter the workflow through Apollo discovery, Clay-assisted enrichment, or a compatible normalized input record. n8n normalizes those records into assessment jobs, dedupes them against existing prospects, and stores operational state in MongoDB so jobs can be retried, enriched, assessed, and reviewed over time.
+
+  Starting from a company root domain, the workflow discovers and evaluates relevant pages such as:
+
+  - Homepage
+  - About page
+  - Product/category pages
+  - Partner/sponsorship pages
+  - Blog/news/media pages
+  - Events/athlete pages
+  - Contact pages as supporting context only
+
+  Each page is classified and scored individually. The workflow then aggregates the strongest page-level evidence into one company-level sponsor-fit assessment.
+
+  Before page-level AI classification, the workflow builds a multi-page company context summary. This helps identify what the analyzed organization primarily does across its website, while keeping final scoring grounded in each page’s own evidence.
+
+  ---
+
+  ### Main Outputs
+
+  The workflow produces five review layers:
+
+  - **Assessment:** score, conclusion, recommended action, category, business model, offer type
+  - **Evidence:** source URLs, top evidence pages, evidence summaries, page counts
+  - **Reliability:** quality status, retry flag, provider-error count, fallback/blocked-page counts
+  - **Ranking:** rank tier, reliability level, evidence strength, recommended action, ranking rationale
+  - **Action:** contact-role targets and outreach draft fields
+
+  ---
+
+  ## Pipeline Snapshot
+
+  The current n8n workflow includes Apollo prospect intake, Clay webhook handoff, page discovery, text extraction, pre-AI heuristics, multi-page company context extraction, AI classification batches, validation, scoring, aggregation, MongoDB storage, Airtable review outputs, and prospect contact-role staging.
+  
+  <img width="1546" height="340" alt="image" src="https://github.com/user-attachments/assets/e47b6df7-4903-4f0a-86fd-708c7144109e" />
+
+  ---
+
+  ## Reliability Model
+
+  The workflow is designed to avoid publishing weak or failed assessments as successful results.
+
+  - Apollo duplicate-only runs fall through to existing queued or retryable jobs.
+  - Website evidence can override stale or misleading enrichment metadata.
+  - Blocked, empty, failed, and soft-404 pages produce fallback records instead of disappearing.
+  - Gemini calls use retry/backoff and staggered batch timing.
+  - Provider failures are marked as failed_provider or needs_retry, not completed.
+  - Quality gates prevent provider-error assessments from being published to review outputs.
+  - Airtable is treated as a review layer; MongoDB remains the operational store.
 
   ---
 
@@ -182,15 +168,17 @@
 
   ### MongoDB
 
-  MongoDB is used for structured storage and historical evidence.
+  MongoDB is used for operational state, evidence storage, and historical assessment records.
 
-  Current brand assessment storage includes:
+  Current MongoDB collections include:
 
-  - `brand_page_assessments`
-  - `brand_assessments`
-  - `brand_assessment_jobs`
-  - `outreach_drafts`
-  - `config`
+  - brand_assessment_jobs
+  - brand_page_assessments
+  - brand_assessments
+  - outreach_drafts
+  - config
+
+  brand_assessment_jobs is designed to act as a lightweight operational queue. Rich Apollo, Clay, scoring, ranking, and outreach fields are preserved in assessment, enrichment, ranking, and review outputs rather than being required as initial queue input.
 
   ### Airtable
 
@@ -200,11 +188,13 @@
 
   - `company_enrichment`
   - `brand_assessments`
+  - `partnership_prospect_rankings`
   - `prospect_contacts`
   - `outreach_review_queue`
 
   The `company_enrichment` table stores Clay/Apollo-enriched company reference records.
   The `brand_assessments` table stores company-level sponsor-fit assessments.
+  The `partnership_prospect_rankings` table stores ranked, review-ready prospect prioritization records with score, fit, evidence strength, reliability level, and ranking rationale.
   The `prospect_contacts` table stores recommended contact-role placeholders and future person-level enrichment records.
   The `outreach_review_queue` table stores review-ready outreach drafts.
 
@@ -212,67 +202,72 @@
 
   ## Integrations
 
-  - Apollo: prospect company discovery and initial company metadata
-  - Clay: webhook-based company enrichment handoff
-  - MongoDB: queue, evidence storage, assessment history, and outreach draft records
-  - Airtable: human-facing review layer for assessments, contacts, and outreach drafts
+  ### Apollo
+
+  Apollo is used for company discovery. It supplies prospect companies, domains, industry metadata, location data, employee estimates, LinkedIn URLs, and keyword signals.
+
+  ### Clay
+
+  Clay is used as an enrichment/reference-data layer. n8n can send company payloads to Clay through a webhook, and Clay can return enriched company fields back into n8n.
+
+  ### MongoDB
+
+  MongoDB stores dedupe state, queue state, retry status, page-level evidence, company-level assessment history, and outreach draft records.
+
+  ### Airtable
+
+  Airtable stores review-ready outputs for human sorting, filtering, prioritization, and approval.
 
   ---
 
-  ## Example Input
-
   
-  ### MongoDB Job Input
+  ## Prospect Input Contract
 
-  In normal operation, the workflow reads assessment jobs from `brand_assessment_jobs`. During testing, the MongoDB query can target one organization by `analyzed_organization`.
+  Apollo and Clay can supply rich company metadata, but the workflow only requires a minimal normalized prospect record before assessment.
   
   ```json
   {
-    "active": true,
-    "status": "queued",
-    "partner_group": "brand_partner",
-    "target_organization": "Example Pickleball Team",
+    "target_organization": "Pickleball",
     "target_org_type": "sport",
     "target_market": "pickleball / sports / events",
-    "analyzed_organization": "Example Pickleball Equipment Brand",
+    "analyzed_organization": "Example Pickleball Brand",
     "analyzed_org_type": "brand",
+    "partner_group": "brand_partner",
     "root_domain": "https://example.com",
-    "relationship_context": "Known or potential brand partner for the pickleball ecosystem",
-    "config_version": "brand_assessment_v1",
-    "priority": "normal",
-    "created_at": "2026-05-01",
-    "updated_at": "2026-05-01",
-    "last_run_at": null,
-    "last_run_id": null,
-    "last_error": null
+    "source_platform": "apollo",
+    "source_type": "apollo_organization_search",
+    "source_id": "apollo-company-id"
   }
   ```
 
+  n8n stores this normalized prospect as a MongoDB queue item so the assessment can be deduped, retried, enriched, and tracked.
+
   ---
 
-  ## Example Output
+  ## Review Output Contract
 
-  ### Brand Assessment Result
+  The main output is a review-ready company-level partnership assessment written to MongoDB and Airtable.
 
   ```json
   {
     "target_organization": "Pickleball",
-    "analyzed_organization": "Example Pickleball Equipment Brand",
-    "partner_group": "brand_partner",
-    "company_category": "pickleball equipment",
-    "business_model": "consumer sports equipment",
-    "recommended_offer": "player gear partnership",
+    "analyzed_organization": "The Dink Pickleball",
+    "partner_group": "program_partner",
+    "company_category": "pickleball media",
+    "business_model": "b2b media and content",
+    "recommended_offer": "content collaboration",
     "brand_fit_score": 100,
     "brand_fit_conclusion": "strong brand fit",
     "recommended_action": "prioritize outreach",
-    "primary_partnership_angle": "As a manufacturer of pickleball paddles and equipment, the company is a natural fit for sponsorship, gear supply, events, community activations, and co-branded campaigns across the pickleball ecosystem.",
-    "page_count": 9,
-    "usable_page_count": 8,
-    "evidence_page_count": 8,
-    "aggregate_version": "brand_v1"
+    "primary_partnership_angle": "A direct pickleball media partner for content collaboration, event promotion, and audience engagement.",
+    "primary_evidence_summary": "Public pages show dedicated pickleball media coverage, gear reviews, and community content.",
+    "evidence_page_count": 3,
+    "assessment_quality_status": "complete"
   }
   ```
 
+  A separate `partnership_prospect_rankings` output translates the assessment into a prioritization record for sorting prospects by fit, reliability, evidence strength, and recommended next action.
+  
   ---
 
   ## Review Output
@@ -285,84 +280,51 @@
 
   The workflow has been tested end-to-end on several partner categories using pickleball as the target sport and market context.
 
-  Note: These examples are anonymized prototype test results derived from public-web data. They are shown as category-level examples only and do not represent official partner recommendations, endorsements, or affiliations with any
-  listed organization.
-
   | Example Company Type | Category | Partner Group | Score | Conclusion |
   |---|---|---|---:|---|
   | Pickleball equipment brand | pickleball equipment | brand_partner | 100 | strong brand fit |
+  | Pickleball media company | pickleball media | program_partner | 100 | strong brand fit |
   | Pickleball travel company | pickleball travel and experiences | experience_partner | 100 | strong brand fit |
   | Sports facility software vendor | sports facility software | vendor_partner | 86 | strong brand fit |
   | Activewear/lifestyle apparel brand | sports apparel | brand_partner | 61 | moderate brand fit |
   | General productivity software control | software | brand_partner | 7 | weak brand fit |
-  | Insurance/risk services firm | insurance and risk management | vendor_partner | 47 | moderate brand fit |
-  | Hydration beverage brand | hydration beverage | brand_partner | 41 | moderate brand fit |
-  | Coffee brand | beverage / coffee | brand_partner | 39 | weak brand fit |
-  | Adult beverage brand | adult beverage | brand_partner | 30 | weak brand fit |
 
-  A recent control run also confirmed that when enrichment metadata suggested a pickleball facility but the live website showed unrelated/spam-like content, the workflow produced a zero-score weak-fit result instead of forcing a false positive.
+  A recent control run confirmed that when enrichment metadata suggested a pickleball facility but the live website showed unrelated or spam-like content, the workflow produced a zero-score weak-fit result instead of forcing a false positive.
 
-  These tests validate that direct pickleball and experience partners rank highest, facility-software vendors can be recognized as vendor partners, Apollo-discovered prospects can be normalized into the same assessment queue, and outreach drafts can be reviewed separately in Airtable before any send step is added.
+  These examples are prototype test results derived from public-web data. They do not represent official recommendations, endorsements, or affiliations with any listed organization.
   
   ---
 
   ## Key Capabilities
 
-  - Multi-page brand/company assessment
-  - Multi-page company context extraction before page-level AI classification
-  - Homepage-based internal page discovery
-  - Source metadata inference
-  - Clean text extraction from public webpages
-  - AI classification with structured fields
-  - Deterministic validation and fallback handling
-  - Page-level fetch validation and failed-page suppression
-  - AI-output normalization guardrails
-  - Historical run-level assessment keys
-  - Page-level brand-fit scoring
-  - Company-level sponsor-fit aggregation
+  - Multi-page company assessment
   - Apollo prospect intake
   - Clay webhook-based enrichment handoff
-  - Prospect contact-role staging in Airtable
-  - Airtable output for review-ready assessments and outreach review
-  - MongoDB storage for page-level evidence and aggregate assessments
+  - Public-web evidence extraction
+  - Multi-page company context extraction
+  - AI-assisted page classification
+  - Deterministic scoring and quality gates
+  - Provider-failure recovery and retryable job states
+  - Page-level evidence storage
+  - Company-level sponsor-fit aggregation
+  - Airtable review outputs for assessments, contacts, and outreach
+  - Prospect contact-role staging
   - Early scan-memory and change-detection support
-
-  ---
-
-  ## Prototype History
-
-  This project began as a sports-property signal scanner and has since been broadened toward pickleball ecosystem intelligence, including brands, facilities, events, leagues, media, and sponsorship signals.
-
-  That prototype established the core system patterns:
-
-  - Source metadata inference
-  - Clean text extraction
-  - AI-assisted classification
-  - Validation and fallback handling
-  - Scoring logic
-  - Early scan-memory signatures
-
-  The current workflow builds on those patterns but generalizes the system toward reusable brand prospect assessment across outside companies and sponsor categories.
 
   ---
   
   ## Roadmap
 
+  - Further simplify MongoDB input records into a minimal queue schema
+  - Add automated retry scheduling for failed_provider and needs_retry jobs
   - Add material-change detection for repeated brand scans
   - Reduce AI token usage with tighter page selection and text limits
-  - Batch assessment across multiple brands
-  - Rank brands across sponsor categories
-  - Add outreach-ready summaries
-  - Add more Airtable review views for priority queues and follow-up tracking
+  - Batch assessment across multiple companies
+  - Rank prospects across sponsor categories
+  - Expand Clay-to-n8n enrichment return handling with richer company and contact fields
+  - Add real Apollo/Clay person-level contact enrichment into prospect_contacts
   - Add stronger upsert/dedupe behavior for MongoDB and Airtable records
-  - Add seed URL support for known high-value pages such as sports insurance, sponsorship, or partner pages
-  - Add browser-rendered fetch fallback for sites that require JavaScript or advanced bot protection
-  - Add category-specific page summary guardrails for apparel, recovery, accessories, and service pages
-  - Add human-readable top-evidence summaries for Airtable
-  - Move more hardcoded category, guardrail, and controlled-value logic into MongoDB taxonomy/runtime config, including reusable taxonomy matching before AI classification
-  - Add Airtable outreach approval status tracking
-  - Add real Apollo/Clay person-level contact enrichment into `prospect_contacts`
-  - Add Clay-to-n8n return webhook for enriched company data
+  - Move more category, guardrail, and controlled-value logic into MongoDB taxonomy/runtime config
   - Add Smartlead or Instantly send-step integration after approval
 
   ---
@@ -372,7 +334,8 @@
   - Multi-source evidence over single-page assumptions
   - Deterministic validation over blind AI trust
   - Page-level evidence before company-level conclusions
-  - MongoDB for memory and depth
+  - Enrichment metadata as context, not final truth
+  - MongoDB for memory and operational state
   - Airtable for review and action
   - Conservative fallback behavior when AI output is missing or weak
 
@@ -389,11 +352,13 @@
   - Sport-level partnership intelligence
   - Ecosystem-level sponsor discovery
 
+  ---
+
   ## Why This Matters
 
   This is more than a scraping workflow.
 
-  The project combines public-web extraction, AI-assisted classification, deterministic scoring, scan memory, MongoDB storage, and a two-stage review flow in Airtable for both company assessments and outreach drafts.
+  The project combines prospect discovery, company enrichment, public-web extraction, AI-assisted classification, deterministic scoring, retryable operational state, and structured review outputs.
 
   The goal is to help identify which organizations and brands are actually worth reviewing, ranking, and prioritizing for partnership outreach.
 
