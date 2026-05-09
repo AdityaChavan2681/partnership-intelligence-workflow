@@ -178,6 +178,42 @@
 
   ---
 
+  ### Retry-State Example
+
+  A webhook-triggered run can start a discovery/assessment cycle without specifying a single company. After Apollo discovery and dedupe, the workflow selects the next queued or retryable MongoDB job.
+
+  Input:
+
+  ```json
+  {
+    "keywords": "pickleball",
+    "organization_locations": "United States",
+    "per_page": 5,
+    "max_pages": 1,
+    "partner_group": "brand_partner",
+    "target_organization": "Pickleball"
+  }
+  ```
+
+  Result:
+
+  ```json
+  {
+    "trigger_source": "webhook",
+    "selected_company": "The Pickleball Club",
+    "selected_job_id": "69fb2fbad874cf12d785a351",
+    "brand_key": "Pickleball::The Pickleball Club::https://thepickleballclub.com",
+    "brand_fit_score": 0,
+    "recommended_action": "monitor only",
+    "assessment_quality_status": "needs_retry",
+    "needs_retry": true
+  }
+  ```
+
+  In this run, the selected company produced only fallback or insufficient-evidence records. The workflow marked the assessment as `needs_retry` instead of publishing it as a completed partner assessment.
+  
+  ---
+
   ## Storage
 
   ### MongoDB
@@ -252,9 +288,6 @@
     "analyzed_org_type": "brand"
   }
   ```
-
-  ## Prospect Input Contract
-
   n8n converts this webhook run request into normalized MongoDB assessment jobs after Apollo discovery and dedupe. Apollo and optional enrichment sources can add richer metadata, but the assessment only requires a company name and root domain once a job is queued.
 
   ---
