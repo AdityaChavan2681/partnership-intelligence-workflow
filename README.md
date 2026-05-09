@@ -4,8 +4,7 @@
 
   A public-web intelligence pipeline for evaluating companies as potential sponsors or partners within a target sports market.
 
-  The current workflow focuses on the pickleball ecosystem. It uses Apollo and Clay for prospect discovery/enrichment, n8n for orchestration, MongoDB for queueing and evidence history, Gemini for structured classification, and Airtable
-  for review-ready outputs.
+  The current workflow focuses on the pickleball ecosystem. It uses Apollo for prospect discovery, optional Clay handoff for enrichment, n8n for orchestration, MongoDB for queueing and evidence history, Gemini for structured classification, and Airtable for review-ready outputs.
 
   The system is designed to answer:
 
@@ -38,7 +37,8 @@
   ## Architecture
 
   ```text
-  Manual workflow trigger
+  Zapier or HTTP webhook trigger
+  → n8n pipeline run webhook
   → Apollo prospect intake
   → Normalize discovered companies into lightweight candidate jobs
   → Dedupe against existing MongoDB jobs by source ID and root domain
@@ -87,7 +87,7 @@
 
   ## Data Flow
 
-  The pipeline starts with external prospect sources, not manual database records.
+  The pipeline starts from a webhook-triggered run request, which can be sent by Zapier, another automation tool, or a direct HTTP POST.
 
   ```text
   Apollo company discovery
@@ -101,7 +101,8 @@
   → Airtable review outputs
 
   - Apollo supplies company discovery input.
-  - Clay enriches company/reference data and can return enriched fields to n8n.
+  - Clay can receive optional company enrichment handoffs from n8n.
+  - Clay enrichment is not required for assessment execution.
   - MongoDB stores the operational queue, dedupe state, retry state, evidence, and assessment history.
   - Airtable stores human-facing review outputs.
   ```
@@ -112,7 +113,7 @@
 
   The Brand Prospect Assessor evaluates an outside company as a potential sponsor or partner for a target sports market.
 
-  Prospects can enter the workflow through Apollo discovery, Clay-assisted enrichment, or a compatible normalized input record. n8n normalizes those records into assessment jobs, dedupes them against existing prospects, and stores operational state in MongoDB so jobs can be retried, enriched, assessed, and reviewed over time.
+  Prospects enter the workflow through a webhook-triggered Apollo discovery run or a compatible normalized input record. n8n normalizes those records into assessment jobs, dedupes them against existing prospects, and stores operational state in MongoDB so jobs can be retried, enriched, assessed, and reviewed over time.
 
   Starting from a company root domain, the workflow discovers and evaluates relevant pages such as:
 
@@ -144,10 +145,23 @@
 
   ## Pipeline Snapshot
 
-  The current n8n workflow includes Apollo prospect intake, Clay webhook handoff, page discovery, text extraction, pre-AI heuristics, multi-page company context extraction, AI classification batches, validation, scoring, aggregation, MongoDB storage, Airtable review outputs, and prospect contact-role staging.
+  The current n8n workflow includes Zapier-compatible webhook intake, Apollo prospect discovery, optional Clay handoff, page discovery, text extraction, pre-AI heuristics, multi-page company context extraction, AI classification batches, validation, scoring, aggregation, MongoDB storage, Airtable review outputs, and prospect contact-role staging.
   
-  <img width="1546" height="340" alt="image" src="https://github.com/user-attachments/assets/e47b6df7-4903-4f0a-86fd-708c7144109e" />
+  <img width="1501" height="346" alt="image" src="https://github.com/user-attachments/assets/4409f55c-feb3-417e-a6ca-cd347c26a5bf" />
 
+  ---
+
+  ## Recent Workflow Updates
+
+  - Replaced manual/scheduled execution with a Zapier-compatible webhook trigger, so external automation tools can start the pipeline through an HTTP POST.
+  - Added webhook-controlled Apollo search inputs, including keywords, location, page count, page size, partner group, and target context.
+  - Removed the separate Clay return webhook branch to keep the workflow linear; Clay now remains an optional outbound enrichment handoff.
+  - Added a `Needs Clay Enrichment?` gate so already-enriched records skip Clay while unenriched records can still be sent when a Clay webhook URL is configured.
+  - Improved duplicate-handling behavior so Apollo duplicate-only runs can continue into existing queued or retryable assessment jobs instead of stopping.
+  - Added provider-failure quality gates so transient Gemini failures are marked as retryable instead of being published as completed assessments.
+  - Added latest-state Airtable upserts and append-only assessment history support for easier comparison across repeated runs.
+  - Added richer partnership prospect ranking fields to explain why a prospect ranked where it did, including evidence strength, signal flags, source count, company size, location, risk flags, and recommended action.
+  
   ---
 
   ## Reliability Model
@@ -208,7 +222,7 @@
 
   ### Clay
 
-  Clay is used as an enrichment/reference-data layer. n8n can send company payloads to Clay through a webhook, and Clay can return enriched company fields back into n8n.
+  Clay is used as an optional enrichment/reference-data handoff. n8n can send company payloads to Clay when enrichment is needed, while the main assessment continues without requiring a Clay callback.
 
   ### MongoDB
 
@@ -221,26 +235,27 @@
   ---
 
   
-  ## Prospect Input Contract
+  ## Webhook Run Input
 
-  Apollo and Clay can supply rich company metadata, but the workflow only requires a minimal normalized prospect record before assessment.
+  The workflow can be triggered by Zapier, another automation tool, or a direct HTTP POST.
   
   ```json
   {
+    "keywords": "pickleball",
+    "organization_locations": "United States",
+    "per_page": 5,
+    "max_pages": 1,
+    "partner_group": "brand_partner",
     "target_organization": "Pickleball",
     "target_org_type": "sport",
     "target_market": "pickleball / sports / events",
-    "analyzed_organization": "Example Pickleball Brand",
-    "analyzed_org_type": "brand",
-    "partner_group": "brand_partner",
-    "root_domain": "https://example.com",
-    "source_platform": "apollo",
-    "source_type": "apollo_organization_search",
-    "source_id": "apollo-company-id"
+    "analyzed_org_type": "brand"
   }
   ```
 
-  n8n stores this normalized prospect as a MongoDB queue item so the assessment can be deduped, retried, enriched, and tracked.
+  ## Prospect Input Contract
+
+  n8n converts this webhook run request into normalized MongoDB assessment jobs after Apollo discovery and dedupe. Apollo and optional enrichment sources can add richer metadata, but the assessment only requires a company name and root domain once a job is queued.
 
   ---
 
@@ -270,9 +285,9 @@
   
   ---
 
-  ## Review Output
+  ## Airtable Review Tables
 
-  Company-level assessments are written to Airtable for review, outreach drafts are written to a separate Airtable review queue, and recommended contact roles are staged in `prospect_contacts` before any send step is added.
+  Company-level assessments are written to Airtable for review, outreach drafts are written to a separate Airtable review queue, ranked prospects are written to `partnership_prospect_rankings`, and recommended contact roles are staged in `prospect_contacts` before any send step is added.
 
   ---
 
@@ -299,7 +314,8 @@
 
   - Multi-page company assessment
   - Apollo prospect intake
-  - Clay webhook-based enrichment handoff
+  - Optional Clay enrichment handoff
+  - Zapier-compatible webhook intake
   - Public-web evidence extraction
   - Multi-page company context extraction
   - AI-assisted page classification
@@ -321,8 +337,8 @@
   - Reduce AI token usage with tighter page selection and text limits
   - Batch assessment across multiple companies
   - Rank prospects across sponsor categories
-  - Expand Clay-to-n8n enrichment return handling with richer company and contact fields
-  - Add real Apollo/Clay person-level contact enrichment into prospect_contacts
+  - Add optional Apollo organization enrichment before assessment
+  - Add person/contact enrichment only after a prospect reaches a review threshold
   - Add stronger upsert/dedupe behavior for MongoDB and Airtable records
   - Move more category, guardrail, and controlled-value logic into MongoDB taxonomy/runtime config
   - Add Smartlead or Instantly send-step integration after approval
@@ -358,7 +374,7 @@
 
   This is more than a scraping workflow.
 
-  The project combines prospect discovery, company enrichment, public-web extraction, AI-assisted classification, deterministic scoring, retryable operational state, and structured review outputs.
+  The project combines webhook-triggered automation, prospect discovery, optional company enrichment, public-web extraction, AI-assisted classification, deterministic scoring, retryable operational state, and structured review outputs.
 
   The goal is to help identify which organizations and brands are actually worth reviewing, ranking, and prioritizing for partnership outreach.
 
