@@ -315,19 +315,29 @@
 
   ```json
   {
+    "prospect_name": "USA Pickleball",
     "target_organization": "Pickleball",
-    "analyzed_organization": "The Dink Pickleball",
+    "root_domain": "https://usapickleball.org",
     "partner_group": "program_partner",
-    "company_category": "pickleball media",
-    "business_model": "b2b media and content",
-    "recommended_offer": "content collaboration",
+    "company_category": "pickleball governing body",
+    "business_model": "b2b services",
+    "recommended_offer": "corporate sponsorship",
     "brand_fit_score": 100,
-    "brand_fit_conclusion": "strong brand fit",
+    "rank_tier": "A - prioritize",
     "recommended_action": "prioritize outreach",
-    "primary_partnership_angle": "A direct pickleball media partner for content collaboration, event promotion, and audience engagement.",
-    "primary_evidence_summary": "Public pages show dedicated pickleball media coverage, gear reviews, and community content.",
-    "evidence_page_count": 3,
-    "assessment_quality_status": "complete"
+    "reliability_level": "high confidence",
+    "evidence_strength": "strong",
+    "evidence_page_count": 9,
+    "strong_evidence_page_count": 9,
+    "primary_partnership_angle": "As the national governing body, USA Pickleball is a strong partner candidate for official partnerships, tournament sanctioning, and national-level brand integration within the sport.",
+    "primary_evidence_summary": "Public pages identify USA Pickleball as the national governing body responsible for sanctioning tournaments and managing official partnerships for the sport.",
+    "ranking_reason": "Rank A from score 100 with strong evidence across 9 evidence pages, sponsorship/partnership language, event activity, and product/gear relevance.",
+    "expected_value_driver": "event sponsorship and tournament visibility",
+    "strategic_fit": "high",
+    "commercial_fit": "high",
+    "activation_fit": "medium",
+    "relationship_depth": "campaign or event partner",
+    "assessment_date": "2026-05-10"
   }
   ```
 
