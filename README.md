@@ -4,7 +4,7 @@
 
   A public-web intelligence pipeline for evaluating companies as potential sponsors or partners within a target sports market.
 
-  The current workflow focuses on the pickleball ecosystem. It uses Apollo for prospect discovery, optional Clay handoff for enrichment, n8n for orchestration, MongoDB for queueing and evidence history, Gemini for structured classification, and Airtable for review-ready outputs.
+  The current workflow focuses on the pickleball ecosystem. It uses Apollo for prospect discovery, optional Clay handoff for later-stage enrichment, n8n for orchestration, MongoDB for queueing and evidence history, OpenAI/Gemini for structured classification, and Airtable for review-ready assessment and ranking outputs.
 
   The system is designed to answer:
 
@@ -24,7 +24,7 @@
   The pipeline combines:
 
   - Apollo prospect discovery
-  - Clay company enrichment handoff
+  - Optional Clay enrichment handoff for qualified prospects
   - n8n workflow orchestration
   - MongoDB queue, evidence, retry, and history storage
   - Public website discovery and text extraction
@@ -147,7 +147,7 @@
 
   The current n8n workflow includes Zapier-compatible webhook intake, Apollo prospect discovery, optional Clay handoff, page discovery, text extraction, pre-AI heuristics, multi-page company context extraction, AI classification batches, validation, scoring, aggregation, MongoDB storage, Airtable review outputs, and prospect contact-role staging.
   
-  <img width="1501" height="346" alt="image" src="https://github.com/user-attachments/assets/4409f55c-feb3-417e-a6ca-cd347c26a5bf" />
+  <img width="1674" height="365" alt="image" src="https://github.com/user-attachments/assets/3745a853-d031-4fda-9829-55af56bafc21" />
 
   ---
 
@@ -161,6 +161,10 @@
   - Added provider-failure quality gates so transient Gemini failures are marked as retryable instead of being published as completed assessments.
   - Added latest-state Airtable upserts and append-only assessment history support for easier comparison across repeated runs.
   - Added richer partnership prospect ranking fields to explain why a prospect ranked where it did, including evidence strength, signal flags, source count, company size, location, risk flags, and recommended action.
+  - Switched primary company-context and page-classification model routing to OpenAI, with Gemini retained as a fallback path.
+  - Added deterministic blocked/spam-domain classification so 403, empty, suspicious, or hijacked-looking domains can be rejected without spending LLM tokens.
+  - Added rerun comparison logic so repeated assessments update Airtable review tables only when score, evidence shape, or recommendation changes materially.
+  - Improved extraction fallback handling for HTTP 200 pages with sparse or non-standard response bodies by preserving URL/path context.
   
   ---
 
@@ -175,6 +179,8 @@
   - Provider failures are marked as failed_provider or needs_retry, not completed.
   - Quality gates prevent provider-error assessments from being published to review outputs.
   - Airtable is treated as a review layer; MongoDB remains the operational store.
+  - Blocked or suspicious domains can be marked as `rejected_bad_domain` and deactivated instead of being retried indefinitely.
+  - Reruns are allowed, but unchanged results are suppressed from Airtable latest/ranking/outreach outputs to reduce duplicate review noise.
 
   ---
 
@@ -276,17 +282,28 @@
   The workflow can be triggered by Zapier, another automation tool, or a direct HTTP POST.
   
   ```json
-  {
-    "keywords": "pickleball",
-    "organization_locations": "United States",
-    "per_page": 5,
-    "max_pages": 1,
-    "partner_group": "brand_partner",
-    "target_organization": "Pickleball",
+    "search_keywords": "pickleball",
+    "search_location": "United States",
+    "search_page_size": 5,
+    "search_page_count": 1,
+    "prospect_group": "brand_partner",
+    "target_market_name": "Pickleball",
     "target_org_type": "sport",
-    "target_market": "pickleball / sports / events",
-    "analyzed_org_type": "brand"
-  }
+    "target_market_description": "pickleball / sports / events",
+    "prospect_type": "brand",
+    "partnership_goal": "sponsorship",
+    "partnership_horizon": "long_term",
+    "preferred_partner_types": "equipment, media, facility, events",
+    "target_regions": "United States",
+    "minimum_company_size": 10,
+    "maximum_company_size": 500,
+    "revenue_priority": "medium",
+    "growth_priority": "high",
+    "local_activation_priority": "medium",
+    "media_reach_priority": "high",
+    "event_sponsorship_priority": "high",
+    "product_fit_priority": "high",
+    "contact_discovery_required": false
   ```
   n8n converts this webhook run request into normalized MongoDB assessment jobs after Apollo discovery and dedupe. Apollo and optional enrichment sources can add richer metadata, but the assessment only requires a company name and root domain once a job is queued.
 
@@ -330,6 +347,7 @@
 
   | Example Company Type | Category | Partner Group | Score | Conclusion |
   |---|---|---|---:|---|
+  | Pickleball governing body | pickleball governing body | program_partner | 100 | strong brand fit |
   | Pickleball equipment brand | pickleball equipment | brand_partner | 100 | strong brand fit |
   | Pickleball media company | pickleball media | program_partner | 100 | strong brand fit |
   | Pickleball travel company | pickleball travel and experiences | experience_partner | 100 | strong brand fit |
@@ -337,7 +355,7 @@
   | Activewear/lifestyle apparel brand | sports apparel | brand_partner | 61 | moderate brand fit |
   | General productivity software control | software | brand_partner | 7 | weak brand fit |
 
-  A recent control run confirmed that when enrichment metadata suggested a pickleball facility but the live website showed unrelated or spam-like content, the workflow produced a zero-score weak-fit result instead of forcing a false positive.
+  A recent end-to-end validation run assessed USA Pickleball and produced an A-priority ranking with a score of 100, high confidence reliability, strong evidence strength, and 9 evidence pages. The run confirmed the full path from Zapier webhook intake through Apollo/MongoDB queueing, public-web evidence extraction, AI classification, deterministic scoring, ranking output, and Airtable review storage.
 
   These examples are prototype test results derived from public-web data. They do not represent official recommendations, endorsements, or affiliations with any listed organization.
   
