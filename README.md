@@ -4,7 +4,7 @@
 
   A public-web intelligence pipeline for evaluating companies as potential sponsors or partners within a target sports market.
 
-  The current workflow focuses on the pickleball ecosystem. It uses Apollo for prospect discovery, optional Clay handoff for later-stage enrichment, n8n for orchestration, MongoDB for queueing and evidence history, OpenAI/Gemini for structured classification, and Airtable for review-ready assessment and ranking outputs.
+  The current workflow focuses on the pickleball ecosystem. It uses n8n for orchestration, MongoDB as the operational queue and evidence store, public-web extraction for company evidence, Gemini-compatible classification nodes for structured assessment, Airtable for review-ready outputs, and optional Apollo/Clay integrations for discovery and enrichment.
 
   The system is designed to answer:
 
@@ -23,7 +23,8 @@
 
   The pipeline combines:
 
-  - Apollo prospect discovery
+  - MongoDB-backed prospect queueing and retry state
+  - Optional Apollo prospect discovery
   - Optional Clay enrichment handoff for qualified prospects
   - n8n workflow orchestration
   - MongoDB queue, evidence, retry, and history storage
@@ -39,12 +40,13 @@
   ```text
   Zapier or HTTP webhook trigger
   → n8n pipeline run webhook
-  → Apollo prospect intake
-  → Normalize discovered companies into lightweight candidate jobs
-  → Dedupe against existing MongoDB jobs by source ID and root domain
-     ├─ If new prospects exist: queue them in MongoDB and send optional Clay enrichment handoff
-     └─ If no new prospects exist: continue to queued/retryable assessment jobs
-  → Select queued, needs-retry, or provider-failed assessment job
+  → Optional Apollo prospect discovery
+     ├─ If Apollo succeeds: normalize and dedupe discovered companies into MongoDB jobs
+     ├─ If Apollo has no credits or fails: skip discovery and continue from MongoDB queue
+     └─ If new prospects exist: queue them and optionally send Clay enrichment handoff
+  → Select up to 5 queued, needs-retry, or provider-failed assessment jobs
+  → Dedupe selected jobs by company/root domain
+  → Process selected companies one at a time through the assessment workflow
   → Attach runtime and taxonomy config
   → Brand root domain
   → Homepage fetch with browser-like headers
@@ -90,10 +92,12 @@
   The pipeline starts from a webhook-triggered run request, which can be sent by Zapier, another automation tool, or a direct HTTP POST.
 
   ```text
-  Apollo company discovery
+  Webhook run request
+  → optional Apollo company discovery
   → optional Clay enrichment/reference data
   → n8n normalization and dedupe
   → MongoDB operational queue
+  → sequential assessment of selected queued companies
   → public website discovery and evidence extraction
   → Gemini-assisted classification
   → deterministic scoring and quality gates
@@ -147,7 +151,7 @@
 
   The current n8n workflow includes Zapier-compatible webhook intake, Apollo prospect discovery, optional Clay handoff, page discovery, text extraction, pre-AI heuristics, multi-page company context extraction, AI classification batches, validation, scoring, aggregation, MongoDB storage, Airtable review outputs, and prospect contact-role staging.
   
-  <img width="1674" height="365" alt="image" src="https://github.com/user-attachments/assets/3745a853-d031-4fda-9829-55af56bafc21" />
+  <img width="1500" height="335" alt="image" src="https://github.com/user-attachments/assets/0aaaa31d-7d7b-4eca-bc50-1a7860b77ba7" />
 
   ---
 
@@ -161,10 +165,15 @@
   - Added provider-failure quality gates so transient Gemini failures are marked as retryable instead of being published as completed assessments.
   - Added latest-state Airtable upserts and append-only assessment history support for easier comparison across repeated runs.
   - Added richer partnership prospect ranking fields to explain why a prospect ranked where it did, including evidence strength, signal flags, source count, company size, location, risk flags, and recommended action.
-  - Switched primary company-context and page-classification model routing to OpenAI, with Gemini retained as a fallback path.
+  - Switched primary company-context and page-classification model routing with Gemini retained as a fallback path.
   - Added deterministic blocked/spam-domain classification so 403, empty, suspicious, or hijacked-looking domains can be rejected without spending LLM tokens.
   - Added rerun comparison logic so repeated assessments update Airtable review tables only when score, evidence shape, or recommendation changes materially.
   - Improved extraction fallback handling for HTTP 200 pages with sparse or non-standard response bodies by preserving URL/path context.
+  - Made Apollo discovery optional so provider errors or credit limits do not block assessment of existing MongoDB queue records.
+  - Added a sequential queue loop that can select up to 5 unique companies and process them one at a time through the full assessment workflow.
+  - Added company/root-domain dedupe for selected queue batches to avoid processing duplicate company records in the same run.
+  - Improved page discovery by filtering static assets such as fonts, images, CSS, JavaScript, maps, and archives from evidence URLs.
+  - Added fallback internal page probes for common paths such as about, sponsorship, product/category, event, blog, and contact pages when homepage link discovery is sparse.
   
   ---
 
@@ -303,10 +312,12 @@
     "media_reach_priority": "high",
     "event_sponsorship_priority": "high",
     "product_fit_priority": "high",
+    "max_companies_per_run": 5,
     "contact_discovery_required": false
   ```
-  n8n converts this webhook run request into normalized MongoDB assessment jobs after Apollo discovery and dedupe. Apollo and optional enrichment sources can add richer metadata, but the assessment only requires a company name and root domain once a job is queued.
+  `search_page_count` controls Apollo discovery pagination. It does not control website crawl depth. Website page limits are controlled by MongoDB runtime config under `crawl_config.max_pages_total`.
 
+  `max_companies_per_run` controls how many queued companies can be selected for one sequential assessment run. The workflow caps this at 5.
   ---
 
   ## Review Output Contract
@@ -396,7 +407,7 @@
   - Add automated retry scheduling for failed_provider and needs_retry jobs
   - Add material-change detection for repeated brand scans
   - Reduce AI token usage with tighter page selection and text limits
-  - Batch assessment across multiple companies
+  - Stabilize and monitor sequential multi-company queue runs
   - Rank prospects across sponsor categories
   - Add optional Apollo organization enrichment before assessment
   - Add person/contact enrichment only after a prospect reaches a review threshold
