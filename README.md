@@ -80,7 +80,7 @@ Zapier or HTTP webhook trigger
 
 ---
 
-## Current Workflow State
+## Workflow State
 
 Current exported workflow file:
 
@@ -88,9 +88,10 @@ Current exported workflow file:
 partnership-intelligence-workflow-revamped.json
 ```
 
-Current workflow snapshot:
+Workflow snapshot:
 
-- 113 n8n nodes
+- 113 n8n nodes after revamp, reduced from 119 nodes in the previous export
+- Removed 7 wait nodes while preserving sequential company processing and extractor retry control
 - Zapier-compatible webhook path: `partnership-pipeline-run`
 - MongoDB queue collection: `brand_assessment_jobs`
 - Page evidence collection: `brand_page_assessments`
@@ -99,7 +100,6 @@ Current workflow snapshot:
 - Pipeline status collections: `pipeline_run_status`, `pipeline_run_events`
 - Current model routing: `models/gemma-4-26b-a4b-it`
 - Extractor retries: 2 tries per extractor node
-- Wait nodes removed from the current workflow export
 
 The main assessment still processes companies sequentially. `max_companies_per_run` controls how many queued companies can be selected for a run, with the workflow capped at 5.
 
@@ -237,11 +237,11 @@ The workflow is currently routed through `models/gemma-4-26b-a4b-it` because ear
 
 ---
 
-## Model and Quota Notes
+## Runtime and Model Notes
 
 Model choice matters because each company can create several company-context and page-classification calls.
 
-Current operating notes:
+Operating notes:
 
 - The current workflow uses `models/gemma-4-26b-a4b-it` because it has been more stable than `gemini-3.1-flash-lite` during recent extractor tests.
 - Gemma 4 26B has lower RPM than some Gemma 3 variants, but its unlimited TPM is useful for larger page-text inputs.
@@ -249,15 +249,13 @@ Current operating notes:
 - Gemini Flash Lite has high TPM, but repeated service-unavailable errors made it less reliable for this workflow during testing.
 - RPM, TPM, and RPD are the practical throughput limits; sampling settings are kept conservative for consistent structured extraction.
 
-A recent 5-company execution completed successfully after routing through the more stable Gemma model path and reducing extractor retry loops. Multi-company runtime still depends on provider availability, page count, extracted text volume, and retry settings.
-
 ---
 
 ## MongoDB Collections
 
 MongoDB stores operational state, evidence, and historical assessment records.
 
-Current collections include:
+Collections include:
 
 - `brand_assessment_jobs`: lightweight queue, dedupe state, job status, retry status
 - `brand_page_assessments`: page-level evidence and page scores
@@ -275,7 +273,7 @@ The queue is intentionally lightweight. Rich Apollo, Clay, scoring, ranking, and
 
 Airtable is used for human review, filtering, prioritization, and approval.
 
-Current review outputs use:
+Review outputs use:
 
 - `company_enrichment`
 - `brand_assessments`
@@ -359,17 +357,11 @@ A separate `partnership_prospect_rankings` output translates the assessment into
 
 ## Portfolio Screenshots
 
-The following screenshots can be added to show the workflow architecture, operational state, and final review outputs.
-
 ### Workflow Overview
-
-Add a zoomed-out n8n workflow screenshot here to show the full pipeline structure and orchestration flow.
 
 <img width="1491" height="259" alt="image" src="https://github.com/user-attachments/assets/95908db4-0aa6-4493-8dbb-1eff0c93465c" />
 
 ### Airtable Review Output
-
-Add an Airtable screenshot showing review-ready assessment fields such as company name, score, recommended action, reliability level, evidence strength, and ranking rationale.
 
 <img width="1260" height="632" alt="image" src="https://github.com/user-attachments/assets/81200018-7df4-47dd-84d6-7e6d4bcec0f8" />
 
@@ -379,7 +371,7 @@ Add an Airtable screenshot showing review-ready assessment fields such as compan
 
 ---
 
-## Current Test Notes
+## Test Notes
 
 The workflow has been tested end-to-end on pickleball-focused partner categories and general control companies.
 
@@ -403,6 +395,16 @@ These examples are prototype test results derived from public-web data. They do 
 
 ---
 
+## What This Demonstrates
+
+- Designing stateful automation instead of one-off scraping
+- Building retry-aware workflows around unreliable external services
+- Combining AI classification with deterministic validation and scoring
+- Turning messy public-web evidence into review-ready business outputs
+- Separating operational state in MongoDB from human review workflows in Airtable
+
+---
+
 ## Key Capabilities
 
 - Zapier-compatible webhook intake
@@ -410,6 +412,7 @@ These examples are prototype test results derived from public-web data. They do 
 - Optional Clay enrichment handoff
 - MongoDB-backed queueing and retry state
 - Sequential multi-company assessment runs
+- Reduced workflow complexity from 119 to 113 nodes
 - Company/root-domain dedupe
 - Public-web page discovery and fetch validation
 - Blocked, empty, soft-404, and suspicious-domain fallback handling
