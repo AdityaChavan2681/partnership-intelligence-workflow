@@ -4,6 +4,8 @@ Brand prospect assessment, sponsor-fit scoring, and review-first outreach prepar
 
 > Status: Active development. This repository currently documents the project architecture, workflow behavior, screenshots, and implementation notes. The n8n workflow export, credentials, API keys, database connections, and environment-specific configuration are not included yet.
 
+> Verified test: Latest exported run completed successfully with assessment, ranking, outreach draft, Airtable/MongoDB review outputs, contact-role records, and an SMTP/Gmail owner-review email that was sent automatically during the workflow run and received successfully.
+
 This project uses n8n to evaluate companies as potential sponsors, partners, vendors, media partners, or activation partners for a target sports market. The current workflow is tuned for the pickleball ecosystem, but the intake fields and scoring model are designed to support other sports, events, venues, leagues, and commercial partnership categories.
 
 The system is designed to answer:
@@ -352,7 +354,7 @@ Airtable stores review-ready outputs for sorting, filtering, prioritization, and
 
 ### SMTP/Gmail
 
-SMTP/Gmail can send automatic owner-review notifications for generated outreach drafts. These emails are sent to the operator for review and do not send prospect-facing outreach.
+SMTP/Gmail can send automatic owner-review notifications after an outreach draft is generated during a workflow run. This was successfully tested with a sent-and-received owner-review email. These emails are sent to the operator for review and do not send prospect-facing outreach.
 
 ### Outreach Delivery Tools
 
@@ -426,7 +428,7 @@ Outreach review output:
   "spf_status": "not_checked",
   "dkim_status": "not_checked",
   "dmarc_status": "not_checked",
-  "owner_review_email_to": "chavanaditya0000@gmail.com",
+  "owner_review_email_to": "n8ntestemail@gmail.com",
   "owner_review_email_subject": "Review outreach draft: Selkirk Sport - We Are Pickleball (score 100)"
 }
 ```
@@ -439,7 +441,7 @@ The outreach branch creates review-ready email drafts, owner-review email notifi
 
 ### Workflow Overview
 
-<img width="1685" height="326" alt="image" src="https://github.com/user-attachments/assets/a0000b17-97f5-4b15-ab89-a86ec2bde83c" />
+<img width="1491" height="259" alt="image" src="https://github.com/user-attachments/assets/95908db4-0aa6-4493-8dbb-1eff0c93465c" />
 
 ### Airtable Review Output
 
@@ -471,6 +473,7 @@ Recent validation runs confirmed:
 
 - execution `1059` completed successfully in 50 seconds with zero node errors
 - a publishable assessment can produce ranking, outreach, contact-role, Airtable, MongoDB, and owner-email outputs
+- SMTP/Gmail owner-review notification was sent automatically during the workflow run and received successfully during testing
 - a 5-company sequential execution can complete through the queue loop
 - publishable assessments generate outreach drafts and contact-role records
 - outreach drafts save to MongoDB and Airtable review tables
@@ -572,6 +575,6 @@ These examples are prototype test results derived from public-web data. They do 
 
 This is more than a scraping workflow.
 
-The project combines webhook-triggered automation, prospect discovery, public-web extraction, AI-assisted classification, deterministic scoring, retryable operational state, structured review outputs, and review-first outreach preparation.
+The project combines webhook-triggered automation, optional prospect discovery, public-web extraction, AI-assisted classification, deterministic scoring, retryable operational state, structured review outputs, and review-first outreach preparation.
 
 The goal is to help identify which organizations and brands are actually worth reviewing, ranking, and prioritizing for partnership outreach.
