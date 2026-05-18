@@ -468,7 +468,7 @@ Outreach review output:
   "spf_status": "not_checked",
   "dkim_status": "not_checked",
   "dmarc_status": "not_checked",
-  "owner_review_email_to": "chavanaditya0000@gmail.com",
+  "owner_review_email_to": "testn8nemailoutput@gmail.com",
   "owner_review_email_subject": "Review outreach draft: Pickleball Kingdom (score 100)"
 }
 ```
