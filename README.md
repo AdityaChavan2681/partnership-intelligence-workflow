@@ -4,9 +4,9 @@ Brand prospect assessment, sponsor-fit scoring, and review-first outreach prepar
 
 > Status: Active development. This repository currently documents the project architecture, workflow behavior, screenshots, and implementation notes. The n8n workflow export, credentials, API keys, database connections, and environment-specific configuration are not included yet.
 
-> Verified test: Latest exported run completed successfully with assessment, ranking, outreach draft, Airtable/MongoDB review outputs, contact-role records, and an SMTP/Gmail owner-review email that was sent automatically during the workflow run and received successfully.
+> Latest verified run: A full manual pipeline execution completed successfully after the AI page-classification loop refactor. The run classified 6 website pages, produced 1 company-level assessment, generated an outreach draft, sent an SMTP/Gmail owner-review email, updated the MongoDB job status, and marked the pipeline run complete.
 
-This project uses n8n to evaluate companies as potential sponsors, partners, vendors, media partners, or activation partners for a target sports market. The current workflow is tuned for the pickleball ecosystem, but the intake fields and scoring model are designed to support other sports, events, venues, leagues, and commercial partnership categories.
+This project uses n8n to evaluate companies as potential sponsors, partners, vendors, media partners, facility partners, program partners, or activation partners for a target sports market. The current workflow is tuned for the pickleball ecosystem, but the intake fields and scoring model are designed to support other sports, events, venues, leagues, and commercial partnership categories.
 
 The system is designed to answer:
 
@@ -19,11 +19,11 @@ is this company a credible partnership prospect, and what outreach angle should 
 
 ## Repository Scope
 
-This repository is currently README-only while the workflow is being developed and tested. It documents the system design, current workflow behavior, integrations, operating lessons, and portfolio screenshots before the n8n export and setup assets are prepared for release.
+This repository is currently README-first while the workflow is being developed and tested. It documents the system design, current workflow behavior, integrations, operating lessons, and portfolio screenshots before the n8n export and setup assets are prepared for release.
 
 The working n8n workflow, local credentials, API keys, Zapier setup, MongoDB connection details, Airtable configuration, SMTP credentials, and temporary Cloudflare Tunnel URLs are intentionally excluded.
 
-Local testing and debugging may use PowerShell commands for n8n API calls, execution-output exports, and webhook/tunnel checks.
+Local testing and debugging may use PowerShell commands, n8n API calls, execution-output exports, and webhook/tunnel checks.
 
 ---
 
@@ -41,7 +41,8 @@ The workflow combines:
 - Optional Apollo discovery when credits are available
 - Optional Clay enrichment handoff
 - Public website discovery and text extraction
-- Gemma/Gemini-compatible model nodes for company context and page classification
+- Gemini-backed company context and page classification
+- A single looped AI page-classification lane instead of duplicated batch branches
 - Deterministic scoring, normalization, and quality gates
 - Short-term and long-term partnership potential scoring
 - Airtable review outputs for assessments, rankings, contacts, and outreach
@@ -54,36 +55,38 @@ The workflow combines:
 
 ```text
 Zapier or HTTP webhook trigger
-→ n8n pipeline run webhook
-→ pipeline run lock/status check
-→ optional Apollo prospect discovery
-   ├─ if Apollo succeeds: normalize and queue discovered companies in MongoDB
-   ├─ if Apollo has no credits or fails: continue from the MongoDB queue
-   └─ if Clay handoff is configured: optionally send enrichment payloads
-→ select queued, retryable, or provider-failed assessment jobs from MongoDB
-→ dedupe selected jobs by company/root domain
-→ process selected companies sequentially through the assessment workflow
-→ fetch homepage with browser-like headers
-→ discover internal links and fallback probe URLs
-→ filter and classify relevant website pages
-→ fetch selected pages and validate HTTP/page quality
-→ extract clean page text and preserve evidence snippets
-→ build multi-page company context input
-→ extract company-level context
-→ attach company context to page-level records
-→ split pages into classification batches
-→ classify page-level partnership signals with model-backed extractor nodes
-→ normalize and validate AI output
-→ apply fallback handling for weak, blocked, or invalid pages
-→ score page-level sponsor-fit evidence
-→ store page-level evidence in MongoDB
-→ aggregate brand-level assessment
-→ compare against previous assessment state
-→ write company assessment, ranking, contacts, and outreach review outputs
-→ generate company-context outreach draft
-→ send owner-review email through SMTP/Gmail when enabled
-→ stage manual outreach status, sender-domain readiness, and contact-role targets
-→ update MongoDB job status and pipeline run status
+-> n8n pipeline run webhook
+-> pipeline run lock/status check
+-> optional Apollo prospect discovery
+   -> if Apollo succeeds: normalize and queue discovered companies in MongoDB
+   -> if Apollo has no credits or fails: continue from the MongoDB queue
+   -> if Clay handoff is configured: optionally send enrichment payloads
+-> select one queued, retryable, provider-failed, or stale-running assessment job from MongoDB
+-> claim/update selected assessment job state
+-> fetch homepage with browser-like headers
+-> discover internal links and fallback probe URLs
+-> filter and classify relevant website pages
+-> fetch selected pages and validate HTTP/page quality
+-> extract clean page text and preserve evidence snippets
+-> build multi-page company context input
+-> extract company-level context
+-> attach company context to page-level records
+-> prepare AI classification items
+-> loop through selected pages one at a time
+   -> preserve source metadata
+   -> classify page-level partnership signal with Gemini extractor
+   -> normalize model output and apply page guardrails
+-> merge classified pages with blocked-page fallback records
+-> validate page classifications
+-> score page-level sponsor-fit evidence
+-> store page-level evidence in MongoDB
+-> aggregate brand-level assessment
+-> compare against previous assessment state
+-> write company assessment, ranking, contacts, and outreach review outputs
+-> generate company-context outreach draft
+-> send owner-review email through SMTP/Gmail when enabled
+-> update MongoDB job status
+-> mark pipeline run complete
 ```
 
 ---
@@ -96,28 +99,29 @@ Current exported workflow file:
 partnership-intelligence-workflow-revamped.json
 ```
 
-Workflow snapshot:
+Current workflow snapshot:
 
-- 114 n8n nodes after the latest outreach-email update
-- Reduced from 119 nodes in the previous export before simplification
-- Removed 7 wait nodes while preserving sequential company processing and extractor retry control
+- 102 n8n nodes after the AI loop refactor
+- Reduced from 114 nodes before removing duplicated classifier branches
 - Zapier-compatible webhook path: `partnership-pipeline-run`
 - MongoDB queue collection: `brand_assessment_jobs`
 - Page evidence collection: `brand_page_assessments`
 - Company assessment collection: `brand_assessments`
 - Outreach draft collection: `outreach_drafts`
 - Pipeline status collections: `pipeline_run_status`, `pipeline_run_events`
-- Current primary model routing: `models/gemma-4-26b-a4b-it`
-- Extractor retries: 2 tries per extractor node
-- Owner-review email node added for SMTP/Gmail notification when credentials are configured
+- Current model routing: `models/gemini-3.1-flash-lite`
+- Owner-review email sender used in testing: `n8nemailtestpartner@gmail.com`
+- Default stale lock timeout for development/manual runs: 10 minutes
+- Manual/dev pipeline run size: 1 company per run
+- Page classification now uses one looped extractor lane instead of five parallel batch branches
 
-The main assessment still processes companies sequentially. `max_companies_per_run` controls how many queued companies can be selected for a run, with the workflow capped at 5.
+The main assessment currently processes one selected company per manual pipeline run. This keeps Zapier-triggered development runs predictable, reduces nested-loop completion issues, and still allows repeated queue processing through separate runs.
 
 ---
 
 ## Webhook Run Input
 
-Zapier currently sends fields like this:
+Zapier can send fields like this:
 
 ```json
 {
@@ -144,10 +148,11 @@ Zapier currently sends fields like this:
   "product_fit_priority": "high",
   "contact_discovery_required": false,
   "max_companies_per_run": 1,
+  "pipeline_stale_after_minutes": 10,
   "outreach_delivery_platform": "review_only",
   "sender_domain": "testdomain.com",
   "dkim_selector": "default",
-  "manual_sender_email": "aditya@test.com"
+  "manual_sender_email": "n8nemailtestpartner@gmail.com"
 }
 ```
 
@@ -156,9 +161,9 @@ Notes:
 - `search_page_count` controls Apollo discovery pagination. It does not control website crawl depth.
 - Website crawl limits are controlled by runtime config, including `crawl_config.max_pages_total`.
 - `search_page_size` controls the Apollo page size when Apollo discovery is enabled.
-- `max_companies_per_run` controls how many queued companies can be processed sequentially in one run.
+- `max_companies_per_run` is currently kept at `1` for stable manual and Zapier-driven development runs.
+- `pipeline_stale_after_minutes` can override the default lock timeout, capped between 1 and 90 minutes.
 - Outreach delivery fields are used for draft readiness and review tracking; prospect-facing sends are not automatic.
-- During testing, `max_companies_per_run: 1` is recommended to avoid burning model quota while debugging.
 
 ---
 
@@ -166,19 +171,22 @@ Notes:
 
 ```text
 Webhook request
-→ pipeline run context
-→ optional Apollo discovery
-→ optional Clay enrichment handoff
-→ MongoDB queue insert/update and dedupe
-→ selected assessment jobs
-→ public website discovery
-→ page fetch and text extraction
-→ company-context extraction
-→ page-level partnership signal classification
-→ deterministic scoring and quality gates
-→ MongoDB evidence/history storage
-→ Airtable review outputs
-→ outreach draft and owner-review notification
+-> pipeline run context
+-> active run lock check
+-> optional Apollo discovery
+-> optional Clay enrichment handoff
+-> MongoDB queue insert/update and dedupe
+-> selected assessment job
+-> public website discovery
+-> page fetch and text extraction
+-> company-context extraction
+-> looped page-level partnership signal classification
+-> deterministic scoring and quality gates
+-> MongoDB evidence/history storage
+-> Airtable review outputs
+-> outreach draft and owner-review notification
+-> job status update
+-> pipeline run completion update
 ```
 
 Apollo is useful for discovery, but it is not required for assessment execution. If Apollo credits are unavailable, the workflow can still assess companies already present in MongoDB.
@@ -204,6 +212,45 @@ Starting from a company name and root domain, the workflow discovers and evaluat
 Each page is classified and scored individually. The workflow then aggregates the strongest page-level evidence into one company-level sponsor-fit assessment.
 
 Before page-level classification, the workflow builds a multi-page company context record. This helps identify what the analyzed organization primarily does while keeping final scoring grounded in each page's own evidence.
+
+---
+
+## AI Classification Refactor
+
+The page-classification section was simplified from five duplicated batch branches into a single looped classifier lane.
+
+Previous shape:
+
+```text
+Route Pages By AI Batch
+-> Preserve Source Metadata Batch 1-5
+-> Classify Partnership Signal Batch 1-5
+-> Normalize AI Batch 1-5
+-> Merge AI Classified Pages
+```
+
+Current shape:
+
+```text
+Prepare AI Classification Items
+-> Loop AI Page Classification
+   -> Preserve Source Metadata
+   -> Classify Partnership Signal
+   -> Normalize AI Output
+-> Merge AI Classified Pages
+-> Apply Page Classification Guardrails
+```
+
+Benefits:
+
+- Fewer n8n nodes
+- One prompt to maintain
+- One normalization code path
+- Easier debugging in execution output
+- Lower risk of branch drift between classifier copies
+- Same page-level output shape for downstream scoring and aggregation
+
+The latest verified run classified 6 pages through this loop and merged 6 normalized page records successfully.
 
 ---
 
@@ -266,6 +313,10 @@ The workflow is designed to avoid publishing weak or failed assessments as succe
 
 Reliability behavior:
 
+- Pipeline run locks prevent overlapping runs.
+- Stale locks are ignored after the configured timeout.
+- Starting a new run clears stale lock fields from older workflow versions.
+- Completed runs store processed, completed, retryable, and failed-provider job counts.
 - Apollo duplicate-only runs can continue into existing queued or retryable MongoDB jobs.
 - Apollo provider errors or credit limits do not block existing MongoDB queue assessment.
 - Website evidence can override stale or incomplete enrichment metadata.
@@ -280,14 +331,14 @@ Reliability behavior:
 
 ## Runtime and Model Notes
 
-Model choice matters because each company can create several company-context and page-classification calls.
+Model choice matters because each company can create one company-context extraction and multiple page-classification calls.
 
-Operating notes:
+Current operating notes:
 
-- The workflow currently routes core model calls through `models/gemma-4-26b-a4b-it` in the exported file.
-- `gemini-3.1-flash-lite` previously returned frequent service-unavailable errors, but later tests showed it can recover and may be faster for page classification when available.
-- `gemma-4-26b-a4b-it` was more stable in earlier runs and useful for larger text inputs, but it also produced occasional provider-side 500 errors.
-- Gemma 3 variants may be worth testing later for higher RPM/RPD, but their 15K TPM limit means page text may need tighter trimming.
+- The current exported workflow routes company-context and page-classification calls through `models/gemini-3.1-flash-lite`.
+- Earlier Gemma routing was replaced after reliability and compatibility testing.
+- Page classification now runs sequentially through a loop rather than five parallel branches.
+- Sequential page classification is slower than parallel extraction, but it is easier to debug, cheaper to maintain, and more predictable for manual runs.
 - RPM, TPM, and RPD are the practical throughput limits; sampling settings are kept conservative for consistent structured extraction.
 
 ---
@@ -334,7 +385,7 @@ Zapier is the current trigger layer. It sends the run request to the n8n webhook
 
 ### Cloudflare Tunnel
 
-Cloudflare Tunnel is used during development to expose the local n8n webhook to external tools such as Zapier without deploying the workflow to a public server. Tunnel URLs are temporary development endpoints and are not included in the repository.
+Cloudflare Tunnel is used during local development to expose the local n8n webhook to external tools such as Zapier without deploying the workflow to a public server. Tunnel URLs are temporary development endpoints and are not included in the repository.
 
 ### Apollo
 
@@ -354,7 +405,7 @@ Airtable stores review-ready outputs for sorting, filtering, prioritization, and
 
 ### SMTP/Gmail
 
-SMTP/Gmail can send automatic owner-review notifications after an outreach draft is generated during a workflow run. This was successfully tested with a sent-and-received owner-review email. These emails are sent to the operator for review and do not send prospect-facing outreach.
+SMTP/Gmail can send automatic owner-review notifications after an outreach draft is generated during a workflow run. This was successfully tested with a sent-and-received owner-review email from `n8nemailtestpartner@gmail.com`. These emails are sent to the operator for review and do not send prospect-facing outreach.
 
 ### Outreach Delivery Tools
 
@@ -364,28 +415,34 @@ Smartlead, Instantly, or similar outbound platforms are planned as optional down
 
 ## Verified Output Example
 
-The latest exported test run completed successfully and produced a publishable assessment, ranking output, outreach draft, Airtable review row, contact-role records, and an owner-review email.
+The latest exported test run completed successfully after the AI loop refactor and direct completion fix.
 
 Verified execution summary:
 
 ```text
-Execution ID: 1059
 Status: success
-Runtime: 50 seconds
+Mode: manual
+Started at: 2026-05-18T17:57:27.211Z
+Stopped at: 2026-05-18T17:58:06.862Z
 Top-level errors: 0
 Node errors: 0
-Company: Selkirk Sport - We Are Pickleball
-Root domain: https://selkirk.com
+Company: Pickleball Kingdom
+Root domain: https://pickleballkingdom.com
+AI page classification items: 6
+Pipeline completion status: completed
 ```
 
 Company assessment output:
 
 ```json
 {
-  "analyzed_organization": "Selkirk Sport - We Are Pickleball",
-  "root_domain": "https://selkirk.com",
-  "company_category": "pickleball equipment",
+  "analyzed_organization": "Pickleball Kingdom",
+  "root_domain": "https://pickleballkingdom.com",
+  "company_category": "pickleball facility",
+  "business_model": "facility operator",
+  "recommended_offer": "event sponsorship",
   "brand_fit_score": 100,
+  "brand_fit_conclusion": "strong brand fit",
   "recommended_action": "prioritize outreach",
   "assessment_quality_status": "complete",
   "short_term_partnership_potential": "medium",
@@ -393,24 +450,7 @@ Company assessment output:
   "long_term_partnership_potential": "high",
   "long_term_partnership_potential_score": 100,
   "partnership_timeline_recommendation": "long-term partnership",
-  "outreach_delivery_platform": "review_only",
-  "sender_domain": "testdomain.com",
-  "manual_sender_email": "aditya@test.com"
-}
-```
-
-Ranking output:
-
-```json
-{
-  "prospect_name": "Selkirk Sport - We Are Pickleball",
-  "root_domain": "https://selkirk.com",
-  "company_category": "pickleball equipment",
-  "brand_fit_score": 100,
-  "rank_tier": "A - prioritize",
-  "recommended_action": "prioritize outreach",
-  "reliability_level": "high confidence",
-  "evidence_strength": "strong"
+  "outreach_delivery_platform": "review_only"
 }
 ```
 
@@ -418,8 +458,8 @@ Outreach review output:
 
 ```json
 {
-  "analyzed_organization": "Selkirk Sport - We Are Pickleball",
-  "root_domain": "https://selkirk.com",
+  "analyzed_organization": "Pickleball Kingdom",
+  "root_domain": "https://pickleballkingdom.com",
   "brand_fit_score": 100,
   "recommended_action": "prioritize outreach",
   "outreach_delivery_platform": "review_only",
@@ -428,8 +468,20 @@ Outreach review output:
   "spf_status": "not_checked",
   "dkim_status": "not_checked",
   "dmarc_status": "not_checked",
-  "owner_review_email_to": "n8ntestemail@gmail.com",
-  "owner_review_email_subject": "Review outreach draft: Selkirk Sport - We Are Pickleball (score 100)"
+  "owner_review_email_to": "chavanaditya0000@gmail.com",
+  "owner_review_email_subject": "Review outreach draft: Pickleball Kingdom (score 100)"
+}
+```
+
+Pipeline completion output:
+
+```json
+{
+  "status": "completed",
+  "processed_job_count": 1,
+  "completed_job_count": 1,
+  "retryable_job_count": 0,
+  "failed_provider_job_count": 0
 }
 ```
 
@@ -441,7 +493,7 @@ The outreach branch creates review-ready email drafts, owner-review email notifi
 
 ### Workflow Overview
 
-<img width="1491" height="259" alt="image" src="https://github.com/user-attachments/assets/95908db4-0aa6-4493-8dbb-1eff0c93465c" />
+<img width="1692" height="254" alt="image" src="https://github.com/user-attachments/assets/415c6f69-7a06-4cc8-9b80-41af832dcd51" />
 
 ### Airtable Review Output
 
@@ -464,6 +516,7 @@ Observed examples include:
 | Pickleball governing body | pickleball governing body | program_partner | high-confidence fit |
 | Pickleball equipment brand | pickleball equipment | brand_partner | high-confidence fit |
 | Pickleball media company | pickleball media | program_partner | high-confidence fit |
+| Pickleball facility operator | pickleball facility | facility_partner | high-confidence fit |
 | Pickleball travel or experience company | travel and experiences | experience_partner | high-confidence fit |
 | Sports facility software vendor | facility software | vendor_partner | moderate to strong fit |
 | Activewear/lifestyle apparel brand | sports apparel | brand_partner | moderate fit |
@@ -471,13 +524,14 @@ Observed examples include:
 
 Recent validation runs confirmed:
 
-- execution `1059` completed successfully in 50 seconds with zero node errors
-- a publishable assessment can produce ranking, outreach, contact-role, Airtable, MongoDB, and owner-email outputs
+- a full manual pipeline run completed successfully with zero node errors
+- the AI page classifier loop processed 6 pages and merged 6 normalized outputs
+- a publishable assessment can produce outreach, contact-role, Airtable, MongoDB, and owner-email outputs
 - SMTP/Gmail owner-review notification was sent automatically during the workflow run and received successfully during testing
-- a 5-company sequential execution can complete through the queue loop
+- the pipeline run lock starts as `running` and finishes as `completed`
+- completed pipeline status stores processed, completed, retryable, and failed-provider job counts
 - publishable assessments generate outreach drafts and contact-role records
 - outreach drafts save to MongoDB and Airtable review tables
-- owner-review emails can send automatically through SMTP/Gmail when credentials are configured
 - sender-domain inputs from Zapier can flow into outreach readiness fields
 - manual outreach status and follow-up fields are available for review-first sending
 - failed-provider assessments are blocked from outreach until a publishable assessment exists
@@ -496,6 +550,7 @@ These examples are prototype test results derived from public-web data. They do 
 - Generating company-context email drafts from assessment evidence
 - Sending automatic owner-review notifications while gating prospect-facing outreach
 - Separating operational state in MongoDB from human review workflows in Airtable
+- Refactoring duplicated AI branches into a maintainable loop without changing downstream outputs
 
 ---
 
@@ -505,13 +560,13 @@ These examples are prototype test results derived from public-web data. They do 
 - Optional Apollo company discovery
 - Optional Clay enrichment handoff
 - MongoDB-backed queueing and retry state
-- Sequential multi-company assessment runs
-- Reduced workflow complexity from 119 to 114 nodes after adding the owner-review email node
+- One-company manual pipeline runs for stable development execution
+- Pipeline run lock with stale timeout and completion status
 - Company/root-domain dedupe
 - Public-web page discovery and fetch validation
 - Blocked, empty, soft-404, and suspicious-domain fallback handling
 - Multi-page company context extraction
-- AI-assisted page classification
+- Looped AI-assisted page classification
 - Deterministic scoring and validation guardrails
 - Provider-failure recovery and retryable job states
 - Page-level evidence storage
@@ -527,10 +582,9 @@ These examples are prototype test results derived from public-web data. They do 
 
 ## Roadmap
 
-- Stabilize model routing and compare Gemma/Gemini variants for reliability, speed, and quota efficiency
-- Consider simplifying five classification batch branches into one looped classifier lane
+- Keep validating the single-loop page classifier across broader company categories
 - Add automated retry scheduling for `failed_provider` and `needs_retry` jobs
-- Add stronger run-level observability for current node, provider failures, and token/request burn
+- Add stronger run-level observability for current node, provider failures, and request usage
 - Further simplify MongoDB queue seed records into a minimal input schema
 - Improve automated discovery of company websites when only a company name is provided
 - Reduce AI calls with tighter pre-AI page selection and text limits
@@ -540,6 +594,7 @@ These examples are prototype test results derived from public-web data. They do 
 - Add person/contact enrichment only after a prospect reaches a review threshold
 - Add automated outbound domain-readiness checks for SPF, DKIM, and DMARC before campaign launch
 - Add Smartlead or Instantly handoff after human approval and verified deliverability readiness
+- Revisit multi-company-per-run batching after the one-company path is production-stable
 
 ---
 
@@ -554,6 +609,7 @@ These examples are prototype test results derived from public-web data. They do 
 - MongoDB for memory and operational state
 - Airtable for review and action
 - Conservative fallback behavior when AI output is missing or weak
+- Maintainable workflow structure over unnecessary parallelism during development
 
 ---
 
