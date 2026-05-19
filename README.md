@@ -333,13 +333,75 @@ Reliability behavior:
 
 Model choice matters because each company can create one company-context extraction and multiple page-classification calls.
 
+Current Gemini extractor settings:
+
+```text
+Model: models/gemini-3.1-flash-lite
+Max output tokens: 600
+Temperature: 0.1
+Top K: 20
+Top P: 0.8
+```
+
+These conservative settings are intended to keep extractor outputs short, structured, and repeatable. The workflow still applies deterministic guardrails after AI output, so model settings are not treated as the only reliability layer.
+
 Current operating notes:
 
-- The current exported workflow routes company-context and page-classification calls through `models/gemini-3.1-flash-lite`.
-- Earlier Gemma routing was replaced after reliability and compatibility testing.
-- Page classification now runs sequentially through a loop rather than five parallel branches.
+- Company-context and page-classification calls use `models/gemini-3.1-flash-lite`.
+- Page classification runs sequentially through a loop rather than five parallel branches.
 - Sequential page classification is slower than parallel extraction, but it is easier to debug, cheaper to maintain, and more predictable for manual runs.
-- RPM, TPM, and RPD are the practical throughput limits; sampling settings are kept conservative for consistent structured extraction.
+
+---
+
+## AI Quota Telemetry
+
+The workflow records estimated Gemini request usage for each completed pipeline run.
+
+Current telemetry is based on workflow node counts rather than provider-reported token usage. n8n does not currently expose exact Gemini token consumption or live remaining Google AI Studio quota in this workflow.
+
+The current Google AI Studio quota envelope used for planning is:
+
+```text
+Gemini 3.1 Flash Lite
+RPM: 15
+TPM: 250K
+RPD: 500
+```
+
+For each completed run, the pipeline stores fields such as:
+
+- `ai_provider`
+- `ai_model`
+- `ai_company_context_call_count`
+- `ai_page_classification_call_count`
+- `ai_total_estimated_call_count`
+- `ai_classified_page_count`
+- `ai_provider_error_count`
+- `quota_rpd_limit`
+- `quota_estimated_rpd_used_this_run`
+- `quota_estimated_company_capacity_at_limit`
+- `quota_safety_status`
+- `quota_notes`
+
+The latest verified one-company run used:
+
+```json
+{
+  "ai_provider": "google_gemini",
+  "ai_model": "models/gemini-3.1-flash-lite",
+  "ai_company_context_call_count": 1,
+  "ai_page_classification_call_count": 6,
+  "ai_total_estimated_call_count": 7,
+  "ai_classified_page_count": 6,
+  "ai_provider_error_count": 0,
+  "quota_estimated_rpd_used_this_run": 7,
+  "quota_rpd_limit": 500,
+  "quota_estimated_company_capacity_at_limit": 71,
+  "quota_safety_status": "safe"
+}
+```
+
+These fields are stored on the latest pipeline run status and cleared when a new run starts. This keeps resource telemetry operational rather than mixing it into Airtable review outputs.
 
 ---
 
@@ -422,13 +484,15 @@ Verified execution summary:
 ```text
 Status: success
 Mode: manual
-Started at: 2026-05-18T17:57:27.211Z
-Stopped at: 2026-05-18T17:58:06.862Z
+Started at: 2026-05-19T07:41:54.844Z
+Stopped at: 2026-05-19T07:42:53.447Z
+Measured runtime: 58.6 seconds
 Top-level errors: 0
 Node errors: 0
-Company: Pickleball Kingdom
-Root domain: https://pickleballkingdom.com
+Company: The Dink Pickleball
+Root domain: https://thedinkpickleball.com
 AI page classification items: 6
+Estimated Gemini requests: 7
 Pipeline completion status: completed
 ```
 
@@ -436,20 +500,17 @@ Company assessment output:
 
 ```json
 {
-  "analyzed_organization": "Pickleball Kingdom",
-  "root_domain": "https://pickleballkingdom.com",
-  "company_category": "pickleball facility",
-  "business_model": "facility operator",
-  "recommended_offer": "event sponsorship",
+  "analyzed_organization": "The Dink Pickleball",
+  "root_domain": "https://thedinkpickleball.com",
   "brand_fit_score": 100,
   "brand_fit_conclusion": "strong brand fit",
   "recommended_action": "prioritize outreach",
   "assessment_quality_status": "complete",
-  "short_term_partnership_potential": "medium",
-  "short_term_partnership_potential_score": 73,
-  "long_term_partnership_potential": "high",
-  "long_term_partnership_potential_score": 100,
-  "partnership_timeline_recommendation": "long-term partnership",
+  "ai_provider": "google_gemini",
+  "ai_model": "models/gemini-3.1-flash-lite",
+  "ai_total_estimated_call_count": 7,
+  "quota_estimated_rpd_used_this_run": 7,
+  "quota_safety_status": "safe",
   "outreach_delivery_platform": "review_only"
 }
 ```
@@ -458,8 +519,8 @@ Outreach review output:
 
 ```json
 {
-  "analyzed_organization": "Pickleball Kingdom",
-  "root_domain": "https://pickleballkingdom.com",
+  "analyzed_organization": "The Dink Pickleball",
+  "root_domain": "https://thedinkpickleball.com",
   "brand_fit_score": 100,
   "recommended_action": "prioritize outreach",
   "outreach_delivery_platform": "review_only",
@@ -468,8 +529,8 @@ Outreach review output:
   "spf_status": "not_checked",
   "dkim_status": "not_checked",
   "dmarc_status": "not_checked",
-  "owner_review_email_to": "testn8nemailoutput@gmail.com",
-  "owner_review_email_subject": "Review outreach draft: Pickleball Kingdom (score 100)"
+  "owner_review_email_to": "test_email@example.com",
+  "owner_review_email_subject": "Review outreach draft: The Dink Pickleball (score 100)"
 }
 ```
 
@@ -481,7 +542,10 @@ Pipeline completion output:
   "processed_job_count": 1,
   "completed_job_count": 1,
   "retryable_job_count": 0,
-  "failed_provider_job_count": 0
+  "failed_provider_job_count": 0,
+  "ai_total_estimated_call_count": 7,
+  "quota_estimated_rpd_used_this_run": 7,
+  "quota_safety_status": "safe"
 }
 ```
 
@@ -493,7 +557,7 @@ The outreach branch creates review-ready email drafts, owner-review email notifi
 
 ### Workflow Overview
 
-<img width="1692" height="254" alt="image" src="https://github.com/user-attachments/assets/415c6f69-7a06-4cc8-9b80-41af832dcd51" />
+<img width="1285" height="226" alt="image" src="https://github.com/user-attachments/assets/7bf095d9-c091-4be0-8191-3b84f97627b4" />
 
 ### Airtable Review Output
 
@@ -525,6 +589,7 @@ Observed examples include:
 Recent validation runs confirmed:
 
 - a full manual pipeline run completed successfully with zero node errors
+- the latest measured one-company run completed in 58.6 seconds
 - the AI page classifier loop processed 6 pages and merged 6 normalized outputs
 - a publishable assessment can produce outreach, contact-role, Airtable, MongoDB, and owner-email outputs
 - SMTP/Gmail owner-review notification was sent automatically during the workflow run and received successfully during testing
