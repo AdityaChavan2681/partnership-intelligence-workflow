@@ -1,27 +1,27 @@
 # Partnership Intelligence Pipeline
 
-Brand prospect assessment, sponsor-fit scoring, and review-first outreach preparation for sports partnership teams.
+Brand prospect assessment, sponsor-fit scoring, decision support, and review-first outreach preparation for sports partnership teams.
 
-> Status: Active development. This repository currently documents the project architecture, workflow behavior, screenshots, and implementation notes. The n8n workflow export, credentials, API keys, database connections, and environment-specific configuration are not included yet.
+> Status: Active development. This repository currently documents the project architecture, workflow behavior, screenshots, and implementation notes. Credentials, API keys, database connection strings, local tunnel URLs, and environment-specific configuration are intentionally excluded.
 
-> Latest verified run: A full manual pipeline execution completed successfully after the AI page-classification loop refactor. The run classified 6 website pages, produced 1 company-level assessment, generated an outreach draft, sent an SMTP/Gmail owner-review email, updated the MongoDB job status, and marked the pipeline run complete.
+> Latest verified run: A Zapier-triggered/local n8n pipeline execution completed successfully. The run assessed `Recess Pickleball`, produced a company-level decision of `pursue`, saved the decision to Airtable, generated an outreach draft, sent an owner-review email using runtime Zapier email fields, stored MongoDB records, and marked the pipeline run complete.
 
 This project uses n8n to evaluate companies as potential sponsors, partners, vendors, media partners, facility partners, program partners, or activation partners for a target sports market. The current workflow is tuned for the pickleball ecosystem, but the intake fields and scoring model are designed to support other sports, events, venues, leagues, and commercial partnership categories.
 
 The system is designed to answer:
 
 ```text
-Given a target sport, league, event, venue, or sports property and an outside company,
-is this company a credible partnership prospect, and what outreach angle should be reviewed?
+Given a target sports market and an outside company,
+is this company worth pursuing, reviewing, monitoring, or rejecting as a partnership prospect?
 ```
 
 ---
 
 ## Repository Scope
 
-This repository is currently README-first while the workflow is being developed and tested. It documents the system design, current workflow behavior, integrations, operating lessons, and portfolio screenshots before the n8n export and setup assets are prepared for release.
+This repository is README-first while the workflow is being developed and tested. It documents the system design, workflow behavior, integrations, operating lessons, and portfolio screenshots before the n8n export and setup assets are prepared for release.
 
-The working n8n workflow, local credentials, API keys, Zapier setup, MongoDB connection details, Airtable configuration, SMTP credentials, and temporary Cloudflare Tunnel URLs are intentionally excluded.
+The working n8n workflow, local credentials, API keys, Zapier setup, MongoDB connection details, Airtable credentials, SMTP credentials, and temporary Cloudflare Tunnel URLs are intentionally excluded.
 
 Local testing and debugging may use PowerShell commands, n8n API calls, execution-output exports, and webhook/tunnel checks.
 
@@ -29,7 +29,7 @@ Local testing and debugging may use PowerShell commands, n8n API calls, executio
 
 ## Overview
 
-Partnership teams often evaluate prospects from scattered public signals: homepages, product pages, partner pages, athlete pages, event pages, blog posts, news pages, media pages, and contact pages. Those signals are useful, but they are noisy and hard to compare manually.
+Partnership teams often evaluate prospects from scattered public signals: homepages, product pages, partner pages, athlete pages, event pages, blog posts, media pages, and contact pages. Those signals are useful, but they are noisy and hard to compare manually.
 
 This pipeline converts public-web evidence into structured sponsor-prospect intelligence that can be queued, scored, reviewed, retried, stored, and turned into outreach-ready drafts.
 
@@ -42,12 +42,14 @@ The workflow combines:
 - Optional Clay enrichment handoff
 - Public website discovery and text extraction
 - Gemini-backed company context and page classification
-- A single looped AI page-classification lane instead of duplicated batch branches
+- A single looped AI page-classification lane
 - Deterministic scoring, normalization, and quality gates
-- Short-term and long-term partnership potential scoring
-- Airtable review outputs for assessments, rankings, contacts, and outreach
+- Company-level decision support: `pursue`, `review`, `monitor`, or `reject`
+- Airtable decision and outreach review outputs
 - Review-first outreach preparation with automatic owner-review email notifications
 - Manual outreach tracking and sender-domain readiness fields
+
+MongoDB is the operational system of record. Airtable is the human review layer.
 
 ---
 
@@ -71,7 +73,6 @@ Zapier or HTTP webhook trigger
 -> build multi-page company context input
 -> extract company-level context
 -> attach company context to page-level records
--> prepare AI classification items
 -> loop through selected pages one at a time
    -> preserve source metadata
    -> classify page-level partnership signal with Gemini extractor
@@ -81,9 +82,12 @@ Zapier or HTTP webhook trigger
 -> score page-level sponsor-fit evidence
 -> store page-level evidence in MongoDB
 -> aggregate brand-level assessment
--> compare against previous assessment state
--> write company assessment, ranking, contacts, and outreach review outputs
+-> prepare prospect review decision
+-> save company assessment to MongoDB
+-> save decision record to Airtable
 -> generate company-context outreach draft
+-> save outreach draft to MongoDB and Airtable
+-> create contact placeholder/review records
 -> send owner-review email through SMTP/Gmail when enabled
 -> update MongoDB job status
 -> mark pipeline run complete
@@ -93,17 +97,16 @@ Zapier or HTTP webhook trigger
 
 ## Workflow State
 
-Current exported workflow file:
+Current import file for the clean canvas:
 
 ```text
-partnership-intelligence-workflow-revamped.json
+partnership-intelligence-workflow-revamped-tidy.json
 ```
 
 Current workflow snapshot:
 
-- 102 n8n nodes after the AI loop refactor
-- Reduced from 114 nodes before removing duplicated classifier branches
-- Zapier-compatible webhook path: `partnership-pipeline-run`
+- 106 n8n nodes including disabled legacy/reference nodes
+- Active Zapier-compatible webhook path: `partnership-pipeline-run`
 - MongoDB queue collection: `brand_assessment_jobs`
 - Page evidence collection: `brand_page_assessments`
 - Company assessment collection: `brand_assessments`
@@ -113,9 +116,9 @@ Current workflow snapshot:
 - Owner-review email sender used in testing: `n8nemailtestpartner@gmail.com`
 - Default stale lock timeout for development/manual runs: 10 minutes
 - Manual/dev pipeline run size: 1 company per run
-- Page classification now uses one looped extractor lane instead of five parallel batch branches
+- Page classification uses one looped extractor lane instead of duplicated parallel batch branches
 
-The main assessment currently processes one selected company per manual pipeline run. This keeps Zapier-triggered development runs predictable, reduces nested-loop completion issues, and still allows repeated queue processing through separate runs.
+The workflow currently processes one selected company per manual or Zapier-triggered development run. This keeps test runs predictable, reduces nested-loop completion issues, and still allows repeated queue processing through separate runs.
 
 ---
 
@@ -152,46 +155,49 @@ Zapier can send fields like this:
   "outreach_delivery_platform": "review_only",
   "sender_domain": "testdomain.com",
   "dkim_selector": "default",
-  "manual_sender_email": "n8nemailtestpartner@gmail.com"
+  "manual_sender_email": "test-sender@example.com",
+  "owner_review_email_to": "reviewer@example.com"
 }
 ```
 
 Notes:
 
 - `search_page_count` controls Apollo discovery pagination. It does not control website crawl depth.
+- `search_page_size` controls Apollo page size when Apollo discovery is enabled.
 - Website crawl limits are controlled by runtime config, including `crawl_config.max_pages_total`.
-- `search_page_size` controls the Apollo page size when Apollo discovery is enabled.
 - `max_companies_per_run` is currently kept at `1` for stable manual and Zapier-driven development runs.
 - `pipeline_stale_after_minutes` can override the default lock timeout, capped between 1 and 90 minutes.
-- Outreach delivery fields are used for draft readiness and review tracking; prospect-facing sends are not automatic.
+- `manual_sender_email` and `owner_review_email_to` are runtime-configurable and should use placeholders in public documentation.
+- Prospect-facing sends are not automatic. The current delivery mode is review-first.
 
 ---
 
-## Data Flow
+## Decision Layer
+
+After brand-level aggregation, the workflow prepares a prospect review decision.
+
+Decision outputs include:
+
+- `review_decision`: `pursue`, `review`, `monitor`, or `reject`
+- `decision_confidence`: `high`, `medium`, or `low`
+- `best_use_case`
+- `why_this_company`
+- `main_risk`
+- `next_human_step`
+- `priority_reason`
+- `disqualifier_reason`
+- `decision_version`
+
+This layer turns raw assessment scores into a human-readable decision record. The goal is not only to say that a company scored well, but to explain what to do next, why it stands out, and what risk should be checked before outreach.
+
+Decision examples:
 
 ```text
-Webhook request
--> pipeline run context
--> active run lock check
--> optional Apollo discovery
--> optional Clay enrichment handoff
--> MongoDB queue insert/update and dedupe
--> selected assessment job
--> public website discovery
--> page fetch and text extraction
--> company-context extraction
--> looped page-level partnership signal classification
--> deterministic scoring and quality gates
--> MongoDB evidence/history storage
--> Airtable review outputs
--> outreach draft and owner-review notification
--> job status update
--> pipeline run completion update
+pursue  -> strong fit, strong evidence, clear use case
+review  -> promising fit, but needs human judgment or more verification
+monitor -> some relevance, but not enough evidence for outreach yet
+reject  -> weak fit, unsafe domain, failed quality checks, or very low score
 ```
-
-Apollo is useful for discovery, but it is not required for assessment execution. If Apollo credits are unavailable, the workflow can still assess companies already present in MongoDB.
-
-MongoDB is the operational store. Airtable is the review layer.
 
 ---
 
@@ -201,13 +207,13 @@ The Brand Prospect Assessor evaluates an outside company as a potential sponsor 
 
 Starting from a company name and root domain, the workflow discovers and evaluates relevant pages such as:
 
-- Homepage
-- About pages
-- Product and category pages
-- Partner, sponsorship, affiliate, ambassador, or collaboration pages
-- Blog, news, media, and press pages
-- Event, athlete, club, facility, or tournament pages
-- Contact pages as supporting context only
+- homepage
+- about pages
+- product and category pages
+- partner, sponsorship, affiliate, ambassador, or collaboration pages
+- blog, news, media, and press pages
+- event, athlete, club, facility, or tournament pages
+- contact pages as supporting context only
 
 Each page is classified and scored individually. The workflow then aggregates the strongest page-level evidence into one company-level sponsor-fit assessment.
 
@@ -243,14 +249,12 @@ Prepare AI Classification Items
 
 Benefits:
 
-- Fewer n8n nodes
-- One prompt to maintain
-- One normalization code path
-- Easier debugging in execution output
-- Lower risk of branch drift between classifier copies
-- Same page-level output shape for downstream scoring and aggregation
-
-The latest verified run classified 6 pages through this loop and merged 6 normalized page records successfully.
+- fewer n8n nodes
+- one prompt to maintain
+- one normalization code path
+- easier debugging in execution output
+- lower risk of branch drift between classifier copies
+- same page-level output shape for downstream scoring and aggregation
 
 ---
 
@@ -276,7 +280,7 @@ The workflow also produces separate short-term and long-term partnership potenti
 
 ## Review-First Outreach Workflow
 
-The outreach layer prepares high-quality drafts and review records before any prospect-facing send step.
+The outreach layer prepares drafts and review records before any prospect-facing send step.
 
 A completed publishable assessment can generate:
 
@@ -288,7 +292,14 @@ A completed publishable assessment can generate:
 - sender-domain readiness fields for SPF, DKIM, and DMARC
 - an automatic owner-review email through SMTP/Gmail when credentials are configured
 
-The owner-review email can send automatically to the operator. Prospect-facing sends are intentionally gated behind human review, verified contact data, sender-domain readiness, and future platform approval rules.
+The owner-review email is controlled by webhook/Zapier runtime fields:
+
+```text
+manual_sender_email
+owner_review_email_to
+```
+
+Prospect-facing sends are intentionally gated behind human review, verified contact data, sender-domain readiness, and future platform approval rules.
 
 Smartlead, Instantly, or similar outbound platforms remain planned as optional downstream delivery layers after human approval. The current workflow is review-first rather than bulk-send-first.
 
@@ -296,14 +307,14 @@ Smartlead, Instantly, or similar outbound platforms remain planned as optional d
 
 ## Main Outputs
 
-The workflow produces six review layers:
+The workflow produces four active review layers:
 
-- Assessment: score, conclusion, recommended action, category, business model, and offer type
-- Timeline: short-term partnership potential, long-term partnership potential, timeline recommendation, and rationale
-- Evidence: source URLs, top evidence pages, evidence summaries, page counts, and signal flags
+- Decision: pursue/review/monitor/reject, confidence, best use case, risk, rationale, and next human step
+- Assessment: score, conclusion, recommended action, category, business model, offer type, and evidence summaries
 - Reliability: quality status, retry flag, provider-error count, fallback count, blocked-page count, and evidence strength
-- Ranking: rank tier, reliability level, strategic fit, commercial fit, activation fit, and ranking rationale
 - Outreach: draft email, owner-review notification, manual outreach status, sender-domain readiness, and contact-role targets
+
+Operational/debug details stay in MongoDB. Airtable is kept focused on human review and action.
 
 ---
 
@@ -315,17 +326,15 @@ Reliability behavior:
 
 - Pipeline run locks prevent overlapping runs.
 - Stale locks are ignored after the configured timeout.
-- Starting a new run clears stale lock fields from older workflow versions.
 - Completed runs store processed, completed, retryable, and failed-provider job counts.
 - Apollo duplicate-only runs can continue into existing queued or retryable MongoDB jobs.
-- Apollo provider errors or credit limits do not block existing MongoDB queue assessment.
+- Apollo provider errors, credit limits, or network errors do not block existing MongoDB queue assessment.
 - Website evidence can override stale or incomplete enrichment metadata.
 - Blocked, empty, failed, and soft-404 pages produce fallback records instead of disappearing silently.
 - Suspicious or hijacked-looking domains can be rejected deterministically before wasting model calls.
 - Model/provider failures are marked as `failed_provider` or `needs_retry` instead of being published as completed assessments.
 - Quality gates prevent provider-error assessments from being treated as review-ready results.
 - Failed-provider assessments are blocked from outreach until a publishable assessment exists.
-- Reruns can suppress unchanged Airtable assessment/ranking updates while still allowing publishable outreach draft generation.
 
 ---
 
@@ -383,24 +392,6 @@ For each completed run, the pipeline stores fields such as:
 - `quota_safety_status`
 - `quota_notes`
 
-The latest verified one-company run used:
-
-```json
-{
-  "ai_provider": "google_gemini",
-  "ai_model": "models/gemini-3.1-flash-lite",
-  "ai_company_context_call_count": 1,
-  "ai_page_classification_call_count": 6,
-  "ai_total_estimated_call_count": 7,
-  "ai_classified_page_count": 6,
-  "ai_provider_error_count": 0,
-  "quota_estimated_rpd_used_this_run": 7,
-  "quota_rpd_limit": 500,
-  "quota_estimated_company_capacity_at_limit": 71,
-  "quota_safety_status": "safe"
-}
-```
-
 These fields are stored on the latest pipeline run status and cleared when a new run starts. This keeps resource telemetry operational rather than mixing it into Airtable review outputs.
 
 ---
@@ -413,29 +404,49 @@ Collections include:
 
 - `brand_assessment_jobs`: lightweight queue, dedupe state, job status, retry status
 - `brand_page_assessments`: page-level evidence and page scores
-- `brand_assessments`: company-level assessment history
+- `brand_assessments`: company-level assessment history and decision fields
 - `outreach_drafts`: outreach drafts, owner-review email payloads, manual outreach status, sender-domain readiness
 - `config`: runtime config, taxonomy, and crawl settings
 - `pipeline_run_status`: run lock and current run status
 - `pipeline_run_events`: skip/no-work/status events
 
-The queue is intentionally lightweight. Rich Apollo, Clay, scoring, ranking, and outreach fields are preserved in assessment, enrichment, ranking, and review outputs rather than being required as initial queue input.
+The queue is intentionally lightweight. Detailed evidence, scoring, decision, and outreach data are stored downstream after assessment.
 
 ---
 
-## Airtable Review Tables
+## Airtable Review Architecture
 
 Airtable is used for human review, filtering, prioritization, and approval.
 
-Review outputs use:
+Active review tables:
 
-- `company_enrichment`
-- `brand_assessments`
-- `partnership_prospect_rankings`
-- `prospect_contacts`
-- `outreach_review_queue`
+- `prospect_decisions`: main company-level decision board
+- `outreach_review_queue`: generated outreach drafts pending review
+- `prospect_contacts`: contact and decision-maker tracking
 
-The `brand_assessments` table stores company-level sponsor-fit assessments. `partnership_prospect_rankings` stores prioritization records with score, fit, evidence strength, reliability level, and ranking rationale. `prospect_contacts` stores recommended contact-role placeholders and future person-level enrichment records. `outreach_review_queue` stores review-ready outreach drafts, manual outreach status, sender-domain readiness, and follow-up tracking fields.
+Inactive/future table:
+
+- `company_enrichment`: kept idle as a future Clay/Apollo/manual enrichment cache
+
+Deprecated Airtable branches were disabled and moved into a separate `Legacy Disabled Airtable Branches` area on the n8n canvas. They are retained as rollback/reference only and are no longer targeted by active connections.
+
+Disabled legacy Airtable branches include:
+
+- old brand assessment Airtable output
+- old assessment history Airtable output
+- previous-assessment comparison review update
+- old prospect ranking Airtable output
+
+This keeps Airtable focused on the product workflow:
+
+```text
+Should we pursue this company?
+What is the risk?
+What is the best use case?
+What should a human do next?
+What outreach draft needs review?
+Who might we contact?
+```
 
 ---
 
@@ -451,7 +462,7 @@ Cloudflare Tunnel is used during local development to expose the local n8n webho
 
 ### Apollo
 
-Apollo is optional discovery. It can supply prospect companies, domains, industry metadata, location data, employee estimates, LinkedIn URLs, and keyword signals. If Apollo credits are exhausted, the assessment pipeline can continue from MongoDB queue records.
+Apollo is optional discovery. It can supply prospect companies, domains, industry metadata, location data, employee estimates, LinkedIn URLs, and keyword signals. If Apollo credits are exhausted or Apollo has a provider/network error, the assessment pipeline can continue from MongoDB queue records.
 
 ### Clay
 
@@ -463,11 +474,11 @@ MongoDB stores queue state, dedupe state, retry status, page-level evidence, com
 
 ### Airtable
 
-Airtable stores review-ready outputs for sorting, filtering, prioritization, and approval.
+Airtable stores decision and outreach review records for sorting, filtering, prioritization, and approval.
 
 ### SMTP/Gmail
 
-SMTP/Gmail can send automatic owner-review notifications after an outreach draft is generated during a workflow run. This was successfully tested with a sent-and-received owner-review email from `n8nemailtestpartner@gmail.com`. These emails are sent to the operator for review and do not send prospect-facing outreach.
+SMTP/Gmail can send automatic owner-review notifications after an outreach draft is generated during a workflow run. Testing used a dedicated test inbox rather than a personal address. Public documentation should use placeholder emails.
 
 ### Outreach Delivery Tools
 
@@ -477,41 +488,35 @@ Smartlead, Instantly, or similar outbound platforms are planned as optional down
 
 ## Verified Output Example
 
-The latest exported test run completed successfully after the AI loop refactor and direct completion fix.
+The latest exported test run completed successfully after the decision-board cleanup and runtime email configuration fix.
 
 Verified execution summary:
 
 ```text
 Status: success
-Mode: manual
-Started at: 2026-05-19T07:41:54.844Z
-Stopped at: 2026-05-19T07:42:53.447Z
-Measured runtime: 58.6 seconds
+Started at: 2026-05-20T12:12:00.993Z
+Stopped at: 2026-05-20T12:13:22.643Z
+Measured runtime: 81.7 seconds
 Top-level errors: 0
-Node errors: 0
-Company: The Dink Pickleball
-Root domain: https://thedinkpickleball.com
-AI page classification items: 6
-Estimated Gemini requests: 7
+Company: Recess Pickleball
+Root domain: https://recesspickleball.com
 Pipeline completion status: completed
 ```
 
-Company assessment output:
+Company decision output:
 
 ```json
 {
-  "analyzed_organization": "The Dink Pickleball",
-  "root_domain": "https://thedinkpickleball.com",
+  "analyzed_organization": "Recess Pickleball",
+  "root_domain": "https://recesspickleball.com",
   "brand_fit_score": 100,
   "brand_fit_conclusion": "strong brand fit",
   "recommended_action": "prioritize outreach",
+  "review_decision": "pursue",
+  "decision_confidence": "high",
+  "best_use_case": "product sponsorship or player gear partnership",
   "assessment_quality_status": "complete",
-  "ai_provider": "google_gemini",
-  "ai_model": "models/gemini-3.1-flash-lite",
-  "ai_total_estimated_call_count": 7,
-  "quota_estimated_rpd_used_this_run": 7,
-  "quota_safety_status": "safe",
-  "outreach_delivery_platform": "review_only"
+  "needs_retry": false
 }
 ```
 
@@ -519,18 +524,15 @@ Outreach review output:
 
 ```json
 {
-  "analyzed_organization": "The Dink Pickleball",
-  "root_domain": "https://thedinkpickleball.com",
+  "analyzed_organization": "Recess Pickleball",
+  "root_domain": "https://recesspickleball.com",
   "brand_fit_score": 100,
-  "recommended_action": "prioritize outreach",
+  "review_decision": "pursue",
+  "decision_confidence": "high",
   "outreach_delivery_platform": "review_only",
   "send_step_status": "review_only_no_send_platform",
-  "sender_domain": "testdomain.com",
-  "spf_status": "not_checked",
-  "dkim_status": "not_checked",
-  "dmarc_status": "not_checked",
-  "owner_review_email_to": "test_email@example.com",
-  "owner_review_email_subject": "Review outreach draft: The Dink Pickleball (score 100)"
+  "manual_sender_email": "test-sender@example.com",
+  "owner_review_email_to": "reviewer@example.com"
 }
 ```
 
@@ -542,10 +544,7 @@ Pipeline completion output:
   "processed_job_count": 1,
   "completed_job_count": 1,
   "retryable_job_count": 0,
-  "failed_provider_job_count": 0,
-  "ai_total_estimated_call_count": 7,
-  "quota_estimated_rpd_used_this_run": 7,
-  "quota_safety_status": "safe"
+  "failed_provider_job_count": 0
 }
 ```
 
@@ -557,7 +556,7 @@ The outreach branch creates review-ready email drafts, owner-review email notifi
 
 ### Workflow Overview
 
-<img width="1285" height="226" alt="image" src="https://github.com/user-attachments/assets/7bf095d9-c091-4be0-8191-3b84f97627b4" />
+<img width="1139" height="242" alt="image" src="https://github.com/user-attachments/assets/063b8923-bef3-4985-b212-f97174f8b194" />
 
 ### Airtable Review Output
 
@@ -571,33 +570,19 @@ The outreach branch creates review-ready email drafts, owner-review email notifi
 
 ## Test Notes
 
-The workflow has been tested end-to-end on pickleball-focused partner categories and general control companies.
-
-Observed examples include:
-
-| Example Company Type | Category | Partner Group | Expected Result |
-|---|---|---|---|
-| Pickleball governing body | pickleball governing body | program_partner | high-confidence fit |
-| Pickleball equipment brand | pickleball equipment | brand_partner | high-confidence fit |
-| Pickleball media company | pickleball media | program_partner | high-confidence fit |
-| Pickleball facility operator | pickleball facility | facility_partner | high-confidence fit |
-| Pickleball travel or experience company | travel and experiences | experience_partner | high-confidence fit |
-| Sports facility software vendor | facility software | vendor_partner | moderate to strong fit |
-| Activewear/lifestyle apparel brand | sports apparel | brand_partner | moderate fit |
-| General productivity software control | software | brand_partner | weak fit |
-
 Recent validation runs confirmed:
 
-- a full manual pipeline run completed successfully with zero node errors
-- the latest measured one-company run completed in 58.6 seconds
-- the AI page classifier loop processed 6 pages and merged 6 normalized outputs
-- a publishable assessment can produce outreach, contact-role, Airtable, MongoDB, and owner-email outputs
-- SMTP/Gmail owner-review notification was sent automatically during the workflow run and received successfully during testing
+- a full Zapier-triggered/local pipeline run completed successfully with zero top-level errors
+- the latest measured one-company run completed in 81.7 seconds
+- Apollo insufficient-credit responses are detected and skipped without blocking assessment
+- Apollo network/DNS/provider errors are configured to continue into the skip path
+- the AI page classifier loop processes selected pages through a single reusable lane
+- publishable assessments generate MongoDB assessment records, Airtable decision records, outreach drafts, contact-role records, and owner-email outputs
+- owner-review email configuration now comes from Zapier/webhook runtime fields
 - the pipeline run lock starts as `running` and finishes as `completed`
-- completed pipeline status stores processed, completed, retryable, and failed-provider job counts
-- publishable assessments generate outreach drafts and contact-role records
 - outreach drafts save to MongoDB and Airtable review tables
-- sender-domain inputs from Zapier can flow into outreach readiness fields
+- prospect decision records save to the `prospect_decisions` Airtable table
+- sender-domain inputs from Zapier flow into outreach readiness fields
 - manual outreach status and follow-up fields are available for review-first sending
 - failed-provider assessments are blocked from outreach until a publishable assessment exists
 
@@ -611,11 +596,13 @@ These examples are prototype test results derived from public-web data. They do 
 - Building retry-aware workflows around unreliable external services
 - Combining AI classification with deterministic validation and scoring
 - Turning messy public-web evidence into review-ready business outputs
+- Adding decision support on top of raw scoring
 - Preparing outbound-ready prospect intelligence before automated sending
 - Generating company-context email drafts from assessment evidence
 - Sending automatic owner-review notifications while gating prospect-facing outreach
 - Separating operational state in MongoDB from human review workflows in Airtable
 - Refactoring duplicated AI branches into a maintainable loop without changing downstream outputs
+- Keeping public documentation safe by using placeholder runtime email values
 
 ---
 
@@ -637,11 +624,11 @@ These examples are prototype test results derived from public-web data. They do 
 - Page-level evidence storage
 - Company-level sponsor-fit aggregation
 - Short-term and long-term partnership potential scoring
-- Airtable review outputs for assessments, rankings, contacts, and outreach
+- Prospect review decision layer
+- Airtable decision board output
 - Company-context outreach draft generation
 - Automatic owner-review email notification for generated outreach drafts
 - Manual outreach tracking and sender-domain readiness fields
-- Early rerun comparison and change-detection support
 
 ---
 
@@ -653,13 +640,11 @@ These examples are prototype test results derived from public-web data. They do 
 - Further simplify MongoDB queue seed records into a minimal input schema
 - Improve automated discovery of company websites when only a company name is provided
 - Reduce AI calls with tighter pre-AI page selection and text limits
-- Add material-change detection for repeated brand scans
-- Add stronger upsert/dedupe behavior for MongoDB and Airtable records
-- Move more category, guardrail, and controlled-value logic into MongoDB taxonomy/runtime config
 - Add person/contact enrichment only after a prospect reaches a review threshold
 - Add automated outbound domain-readiness checks for SPF, DKIM, and DMARC before campaign launch
 - Add Smartlead or Instantly handoff after human approval and verified deliverability readiness
 - Revisit multi-company-per-run batching after the one-company path is production-stable
+- Delete disabled legacy Airtable nodes after the cleaner decision-board architecture remains stable across more runs
 
 ---
 
@@ -696,6 +681,6 @@ These examples are prototype test results derived from public-web data. They do 
 
 This is more than a scraping workflow.
 
-The project combines webhook-triggered automation, optional prospect discovery, public-web extraction, AI-assisted classification, deterministic scoring, retryable operational state, structured review outputs, and review-first outreach preparation.
+The project combines webhook-triggered automation, optional prospect discovery, public-web extraction, AI-assisted classification, deterministic scoring, retryable operational state, structured decision outputs, and review-first outreach preparation.
 
-The goal is to help identify which organizations and brands are actually worth reviewing, ranking, and prioritizing for partnership outreach.
+The goal is to help identify which organizations and brands are actually worth pursuing, reviewing, monitoring, or rejecting for partnership outreach.
