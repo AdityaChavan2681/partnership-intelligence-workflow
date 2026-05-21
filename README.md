@@ -4,7 +4,7 @@ Brand prospect assessment, sponsor-fit scoring, decision support, and review-fir
 
 > Status: Active development. This repository currently documents the project architecture, workflow behavior, screenshots, and implementation notes. Credentials, API keys, database connection strings, local tunnel URLs, and environment-specific configuration are intentionally excluded.
 
-> Latest verified run: A Zapier-triggered/local n8n pipeline execution completed successfully. The run assessed `Recess Pickleball`, produced a company-level decision of `pursue`, saved the decision to Airtable, generated an outreach draft, sent an owner-review email using runtime Zapier email fields, stored MongoDB records, and marked the pipeline run complete.
+> Latest verified run: A Zapier-triggered/local n8n pipeline execution completed successfully. A decision-gating test assessed `Canva`, produced a company-level decision of `monitor`, saved the decision to Airtable, skipped outreach draft generation, and marked the pipeline run complete.
 
 This project uses n8n to evaluate companies as potential sponsors, partners, vendors, media partners, facility partners, program partners, or activation partners for a target sports market. The current workflow is tuned for the pickleball ecosystem, but the intake fields and scoring model are designed to support other sports, events, venues, leagues, and commercial partnership categories.
 
@@ -488,18 +488,18 @@ Smartlead, Instantly, or similar outbound platforms are planned as optional down
 
 ## Verified Output Example
 
-The latest exported test run completed successfully after the decision-board cleanup and runtime email configuration fix.
+The latest exported decision-gating test completed successfully after the outreach gate was tightened to generate drafts only for `pursue` decisions.
 
 Verified execution summary:
 
 ```text
 Status: success
-Started at: 2026-05-20T12:12:00.993Z
-Stopped at: 2026-05-20T12:13:22.643Z
-Measured runtime: 81.7 seconds
+Started at: 2026-05-21T14:11:13.001Z
+Stopped at: 2026-05-21T14:11:49.053Z
+Measured runtime: 36.1 seconds
 Top-level errors: 0
-Company: Recess Pickleball
-Root domain: https://recesspickleball.com
+Company: Canva
+Root domain: https://www.canva.com
 Pipeline completion status: completed
 ```
 
@@ -507,32 +507,29 @@ Company decision output:
 
 ```json
 {
-  "analyzed_organization": "Recess Pickleball",
-  "root_domain": "https://recesspickleball.com",
-  "brand_fit_score": 100,
-  "brand_fit_conclusion": "strong brand fit",
-  "recommended_action": "prioritize outreach",
-  "review_decision": "pursue",
-  "decision_confidence": "high",
-  "best_use_case": "product sponsorship or player gear partnership",
+  "analyzed_organization": "Canva",
+  "root_domain": "https://www.canva.com",
+  "brand_fit_score": 47,
+  "brand_fit_conclusion": "moderate brand fit",
+  "recommended_action": "monitor or enrich",
+  "review_decision": "monitor",
+  "decision_confidence": "medium",
+  "best_use_case": "vendor partnership or operational sponsor",
+  "main_risk": "Evidence is thin; review sources before approving outreach.",
+  "next_human_step": "Keep the prospect in the database and enrich it with stronger evidence before outreach.",
   "assessment_quality_status": "complete",
   "needs_retry": false
 }
 ```
 
-Outreach review output:
+Outreach gate output:
 
 ```json
 {
-  "analyzed_organization": "Recess Pickleball",
-  "root_domain": "https://recesspickleball.com",
-  "brand_fit_score": 100,
-  "review_decision": "pursue",
-  "decision_confidence": "high",
-  "outreach_delivery_platform": "review_only",
-  "send_step_status": "review_only_no_send_platform",
-  "manual_sender_email": "test-sender@example.com",
-  "owner_review_email_to": "reviewer@example.com"
+  "prepare_outreach_draft_items": 0,
+  "save_outreach_draft_to_mongodb": "not_run",
+  "save_outreach_draft_to_airtable": "not_run",
+  "send_owner_review_email": "not_run"
 }
 ```
 
@@ -550,13 +547,30 @@ Pipeline completion output:
 
 The outreach branch creates review-ready email drafts, owner-review email notifications, manual outreach status fields, and contact-role placeholders before any prospect-facing send step is considered.
 
+Only `pursue` decisions generate outreach drafts automatically. `monitor` and `reject` decisions are saved to the decision board without creating an outreach draft or owner-review email.
+
+---
+
+## Decision Spectrum Validation
+
+Recent test runs were used to confirm that the workflow can distinguish strong, adjacent, middle, and weak prospects instead of blindly rewarding brand recognition.
+
+| Company | Fit Pattern | Score | Decision | Outreach Draft |
+|---|---:|---:|---|---|
+| Recess Pickleball | direct pickleball product fit | 100 | pursue | yes |
+| Liquid I.V. | adjacent hydration/event activation fit | 100 | pursue | yes |
+| Canva | middle vendor/content support fit | 47 | monitor | no |
+| Microsoft | weak/non-sport-specific fit | 6 | reject | no |
+
+The Microsoft test is important because it shows that a large, well-known company can still be rejected when the public evidence does not support a credible pickleball partnership angle. The Canva test is important because it shows a moderate operational/content use case can be retained for monitoring without triggering outreach.
+
 ---
 
 ## Portfolio Screenshots
 
 ### Workflow Overview
 
-<img width="1139" height="242" alt="image" src="https://github.com/user-attachments/assets/063b8923-bef3-4985-b212-f97174f8b194" />
+<img width="1491" height="259" alt="image" src="https://github.com/user-attachments/assets/95908db4-0aa6-4493-8dbb-1eff0c93465c" />
 
 ### Airtable Review Output
 
@@ -573,11 +587,14 @@ The outreach branch creates review-ready email drafts, owner-review email notifi
 Recent validation runs confirmed:
 
 - a full Zapier-triggered/local pipeline run completed successfully with zero top-level errors
-- the latest measured one-company run completed in 81.7 seconds
+- the latest decision-gating run completed in 36.1 seconds
 - Apollo insufficient-credit responses are detected and skipped without blocking assessment
 - Apollo network/DNS/provider errors are configured to continue into the skip path
 - the AI page classifier loop processes selected pages through a single reusable lane
 - publishable assessments generate MongoDB assessment records, Airtable decision records, outreach drafts, contact-role records, and owner-email outputs
+- `monitor` decisions save to `prospect_decisions` without generating outreach drafts
+- `reject` decisions save to `prospect_decisions` without generating outreach drafts
+- only `pursue` decisions currently generate outreach drafts and owner-review emails
 - owner-review email configuration now comes from Zapier/webhook runtime fields
 - the pipeline run lock starts as `running` and finishes as `completed`
 - outreach drafts save to MongoDB and Airtable review tables
