@@ -97,12 +97,6 @@ Zapier or HTTP webhook trigger
 
 ## Workflow State
 
-Current import file for the clean canvas:
-
-```text
-partnership-intelligence-workflow-revamped-tidy.json
-```
-
 Current workflow snapshot:
 
 - 106 n8n nodes including disabled legacy/reference nodes
@@ -570,7 +564,7 @@ The Microsoft test is important because it shows that a large, well-known compan
 
 ### Workflow Overview
 
-<img width="1491" height="259" alt="image" src="https://github.com/user-attachments/assets/95908db4-0aa6-4493-8dbb-1eff0c93465c" />
+<img width="1524" height="256" alt="image" src="https://github.com/user-attachments/assets/ea89effc-f9d1-41ac-8c29-66d9944bb768" />
 
 ### Airtable Review Output
 
