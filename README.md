@@ -4,7 +4,7 @@ Brand prospect assessment, sponsor-fit scoring, decision support, and review-fir
 
 > Status: Active development. This repository currently documents the project architecture, workflow behavior, screenshots, and implementation notes. Credentials, API keys, database connection strings, local tunnel URLs, and environment-specific configuration are intentionally excluded.
 
-> Latest verified run: A Zapier-triggered/local n8n pipeline execution completed successfully. A decision-gating test assessed `Canva`, produced a company-level decision of `monitor`, saved the decision to Airtable, skipped outreach draft generation, and marked the pipeline run complete.
+> Latest verified run: A Zapier-triggered/local n8n pipeline execution completed successfully. A decision-change tracking test assessed `Canva`, produced a company-level decision of `reject`, compared it against the latest previous completed assessment, classified the result as `stable`, saved the decision to Airtable, skipped outreach draft generation, and marked the pipeline run complete.
 
 This project uses n8n to evaluate companies as potential sponsors, partners, vendors, media partners, facility partners, program partners, or activation partners for a target sports market. The current workflow is tuned for the pickleball ecosystem, but the intake fields and scoring model are designed to support other sports, events, venues, leagues, and commercial partnership categories.
 
@@ -45,6 +45,7 @@ The workflow combines:
 - A single looped AI page-classification lane
 - Deterministic scoring, normalization, and quality gates
 - Company-level decision support: `pursue`, `review`, `monitor`, or `reject`
+- Structured decision reason codes and previous-run change tracking
 - Airtable decision and outreach review outputs
 - Review-first outreach preparation with automatic owner-review email notifications
 - Manual outreach tracking and sender-domain readiness fields
@@ -82,7 +83,9 @@ Zapier or HTTP webhook trigger
 -> score page-level sponsor-fit evidence
 -> store page-level evidence in MongoDB
 -> aggregate brand-level assessment
--> prepare prospect review decision
+-> prepare prospect review decision with reason codes
+-> compare against the latest previous completed assessment
+-> classify decision/score change status
 -> save company assessment to MongoDB
 -> save decision record to Airtable
 -> generate company-context outreach draft
@@ -99,7 +102,7 @@ Zapier or HTTP webhook trigger
 
 Current workflow snapshot:
 
-- 106 n8n nodes including disabled legacy/reference nodes
+- 109 n8n nodes including disabled legacy/reference nodes
 - Active Zapier-compatible webhook path: `partnership-pipeline-run`
 - MongoDB queue collection: `brand_assessment_jobs`
 - Page evidence collection: `brand_page_assessments`
@@ -111,6 +114,7 @@ Current workflow snapshot:
 - Default stale lock timeout for development/manual runs: 10 minutes
 - Manual/dev pipeline run size: 1 company per run
 - Page classification uses one looped extractor lane instead of duplicated parallel batch branches
+- Decision outputs use `decision_v2` reason-code logic plus previous-assessment change tracking
 
 The workflow currently processes one selected company per manual or Zapier-triggered development run. This keeps test runs predictable, reduces nested-loop completion issues, and still allows repeated queue processing through separate runs.
 
@@ -207,6 +211,8 @@ Decision outputs include:
 
 - `review_decision`: `pursue`, `review`, `monitor`, or `reject`
 - `decision_confidence`: `high`, `medium`, or `low`
+- `decision_reason_codes`
+- `decision_reason_summary`
 - `best_use_case`
 - `why_this_company`
 - `main_risk`
@@ -225,6 +231,58 @@ review  -> promising fit, but needs human judgment or more verification
 monitor -> some relevance, but not enough evidence for outreach yet
 reject  -> weak fit, unsafe domain, failed quality checks, or very low score
 ```
+
+Reason codes make the decision auditable without reading every source page. Examples include:
+
+```text
+strong_score
+strong_page_evidence
+high_fit_pages_found
+direct_product_or_gear_fit
+facility_or_venue_fit
+content_or_media_fit
+vendor_support_only
+thin_evidence
+no_high_fit_pages
+no_strong_evidence_pages
+score_below_threshold
+domain_quality_risk
+assessment_needs_retry_or_verification
+```
+
+These fields are stored in MongoDB and sent to the `prospect_decisions` Airtable table so a reviewer can quickly see why a company was pursued, monitored, or rejected.
+
+---
+
+## Decision Change Tracking
+
+After each prospect review decision is prepared, the workflow looks up the latest previous completed assessment for the same `brand_key`.
+
+The comparison adds fields such as:
+
+- `previous_review_decision`
+- `previous_brand_fit_score`
+- `score_delta`
+- `score_delta_abs`
+- `decision_changed`
+- `decision_change_status`
+- `decision_change_reason`
+- `previous_assessment_run_id`
+- `previous_assessment_date`
+- `previous_decision_reason_summary`
+- `decision_change_version`
+
+Change statuses:
+
+```text
+new_assessment          -> no previous completed assessment found
+stable                  -> same decision and very small score movement
+minor_change            -> same decision with small score movement
+material_score_change   -> same decision with meaningful score movement
+decision_changed        -> review decision changed between runs
+```
+
+This gives the decision board memory. A reviewer can distinguish a newly assessed company from one whose recommendation stayed stable, improved, weakened, or changed enough to revisit.
 
 ---
 
@@ -336,7 +394,7 @@ Smartlead, Instantly, or similar outbound platforms remain planned as optional d
 
 The workflow produces four active review layers:
 
-- Decision: pursue/review/monitor/reject, confidence, best use case, risk, rationale, and next human step
+- Decision: pursue/review/monitor/reject, confidence, reason codes, previous-run change status, best use case, risk, rationale, and next human step
 - Assessment: score, conclusion, recommended action, category, business model, offer type, and evidence summaries
 - Reliability: quality status, retry flag, provider-error count, fallback count, blocked-page count, and evidence strength
 - Outreach: draft email, owner-review notification, manual outreach status, sender-domain readiness, and contact-role targets
@@ -431,7 +489,7 @@ Collections include:
 
 - `brand_assessment_jobs`: lightweight queue, dedupe state, job status, retry status
 - `brand_page_assessments`: page-level evidence and page scores
-- `brand_assessments`: company-level assessment history and decision fields
+- `brand_assessments`: company-level assessment history, decision fields, reason codes, and previous-run comparison fields
 - `outreach_drafts`: outreach drafts, owner-review email payloads, manual outreach status, sender-domain readiness
 - `config`: runtime config, taxonomy, and crawl settings
 - `pipeline_run_status`: run lock and current run status
@@ -515,15 +573,15 @@ Smartlead, Instantly, or similar outbound platforms are planned as optional down
 
 ## Verified Output Example
 
-The latest exported decision-gating test completed successfully after the outreach gate was tightened to generate drafts only for `pursue` decisions.
+The latest exported decision-change tracking test completed successfully after adding decision reason codes and previous-assessment comparison.
 
 Verified execution summary:
 
 ```text
 Status: success
-Started at: 2026-05-21T14:11:13.001Z
-Stopped at: 2026-05-21T14:11:49.053Z
-Measured runtime: 36.1 seconds
+Started at: 2026-05-22T11:10:58.413Z
+Stopped at: 2026-05-22T11:11:32.650Z
+Measured runtime: 34.2 seconds
 Top-level errors: 0
 Company: Canva
 Root domain: https://www.canva.com
@@ -536,16 +594,39 @@ Company decision output:
 {
   "analyzed_organization": "Canva",
   "root_domain": "https://www.canva.com",
-  "brand_fit_score": 47,
-  "brand_fit_conclusion": "moderate brand fit",
-  "recommended_action": "monitor or enrich",
-  "review_decision": "monitor",
-  "decision_confidence": "medium",
-  "best_use_case": "vendor partnership or operational sponsor",
-  "main_risk": "Evidence is thin; review sources before approving outreach.",
-  "next_human_step": "Keep the prospect in the database and enrich it with stronger evidence before outreach.",
+  "brand_fit_score": 10,
+  "brand_fit_conclusion": "weak brand fit",
+  "recommended_action": "monitor only",
+  "review_decision": "reject",
+  "decision_confidence": "high",
+  "decision_version": "decision_v2",
+  "decision_reason_codes": [
+    "score_below_threshold",
+    "vendor_support_only",
+    "thin_evidence",
+    "no_high_fit_pages",
+    "no_strong_evidence_pages",
+    "assessment_complete"
+  ],
+  "decision_reason_summary": "score_below_threshold, vendor_support_only, thin_evidence, no_high_fit_pages, no_strong_evidence_pages, assessment_complete",
   "assessment_quality_status": "complete",
   "needs_retry": false
+}
+```
+
+Decision-change output:
+
+```json
+{
+  "previous_review_decision": "reject",
+  "previous_brand_fit_score": 10,
+  "score_delta": 0,
+  "score_delta_abs": 0,
+  "decision_changed": false,
+  "decision_change_status": "stable",
+  "decision_change_reason": "Decision stayed reject and score changed by 0 points.",
+  "previous_assessment_run_id": "brand-assessment-2026-05-22T10:42:40.874Z-72pmbu",
+  "decision_change_version": "decision_change_v1"
 }
 ```
 
@@ -591,13 +672,15 @@ Recent test runs were used to confirm that the workflow can distinguish strong, 
 
 The Microsoft test is important because it shows that a large, well-known company can still be rejected when the public evidence does not support a credible pickleball partnership angle. The Canva test is important because it shows a moderate operational/content use case can be retained for monitoring without triggering outreach.
 
+Later Canva reruns were also used to validate the historical comparison layer. In the latest exported run, Canva scored `10`, stayed at `reject` compared with the latest previous completed assessment, and produced `decision_change_status = stable`.
+
 ---
 
 ## Portfolio Screenshots
 
 ### Workflow Overview
 
-<img width="1524" height="256" alt="image" src="https://github.com/user-attachments/assets/ea89effc-f9d1-41ac-8c29-66d9944bb768" />
+<img width="1320" height="216" alt="image" src="https://github.com/user-attachments/assets/9418232d-c017-4b9f-a610-7cf86b6b1b9e" />
 
 ### Airtable Review Output
 
@@ -614,13 +697,16 @@ The Microsoft test is important because it shows that a large, well-known compan
 Recent validation runs confirmed:
 
 - a full Zapier-triggered/local pipeline run completed successfully with zero top-level errors
-- the latest decision-gating run completed in 36.1 seconds
+- the latest decision-change tracking run completed in 34.2 seconds
 - manual test prospect mode can queue and assess a named company directly from webhook fields
 - manual test prospect mode skips Apollo discovery for that run and still uses the MongoDB queue
 - Apollo insufficient-credit responses are detected and skipped without blocking assessment
 - Apollo network/DNS/provider errors are configured to continue into the skip path
 - the AI page classifier loop processes selected pages through a single reusable lane
 - publishable assessments generate MongoDB assessment records, Airtable decision records, outreach drafts, contact-role records, and owner-email outputs
+- decision reason codes and summaries save into the decision record
+- the workflow compares each company against its latest previous completed assessment when history exists
+- stable decision-change output was verified for a repeated Canva `reject` run with zero score delta
 - `monitor` decisions save to `prospect_decisions` without generating outreach drafts
 - `reject` decisions save to `prospect_decisions` without generating outreach drafts
 - only `pursue` decisions currently generate outreach drafts and owner-review emails
@@ -643,6 +729,7 @@ These examples are prototype test results derived from public-web data. They do 
 - Combining AI classification with deterministic validation and scoring
 - Turning messy public-web evidence into review-ready business outputs
 - Adding decision support on top of raw scoring
+- Tracking whether a decision is new, stable, materially changed, or changed outright
 - Preparing outbound-ready prospect intelligence before automated sending
 - Generating company-context email drafts from assessment evidence
 - Sending automatic owner-review notifications while gating prospect-facing outreach
@@ -672,6 +759,8 @@ These examples are prototype test results derived from public-web data. They do 
 - Company-level sponsor-fit aggregation
 - Short-term and long-term partnership potential scoring
 - Prospect review decision layer
+- Decision reason-code explainability
+- Previous-assessment decision change tracking
 - Airtable decision board output
 - Company-context outreach draft generation
 - Automatic owner-review email notification for generated outreach drafts
@@ -684,6 +773,7 @@ These examples are prototype test results derived from public-web data. They do 
 - Keep validating the single-loop page classifier across broader company categories
 - Add automated retry scheduling for `failed_provider` and `needs_retry` jobs
 - Add stronger run-level observability for current node, provider failures, and request usage
+- Expand historical analytics beyond latest-previous comparison when enough assessment history exists
 - Further simplify MongoDB queue seed records into a minimal input schema
 - Improve automated discovery of company websites when only a company name is provided
 - Reduce AI calls with tighter pre-AI page selection and text limits
