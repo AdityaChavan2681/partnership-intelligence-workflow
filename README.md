@@ -118,7 +118,7 @@ The workflow currently processes one selected company per manual or Zapier-trigg
 
 ## Webhook Run Input
 
-Zapier can send fields like this:
+Webhook clients such as Zapier can send fields like this:
 
 ```json
 {
@@ -163,6 +163,39 @@ Notes:
 - `pipeline_stale_after_minutes` can override the default lock timeout, capped between 1 and 90 minutes.
 - `manual_sender_email` and `owner_review_email_to` are runtime-configurable and should use placeholders in public documentation.
 - Prospect-facing sends are not automatic. The current delivery mode is review-first.
+
+---
+
+## Manual Test Prospect Mode
+
+For demos and debugging, the webhook can bypass discovery and queue a specific company directly.
+
+If these fields are present:
+
+- `manual_test_company_name`
+- `manual_test_root_domain`
+
+the workflow creates or updates a `brand_assessment_jobs` record with `source_platform = manual_test`, skips Apollo discovery for that run, and assesses the provided company.
+
+Optional fields:
+
+- `manual_test_priority`
+- `manual_test_partner_group`
+- `manual_test_relationship_context`
+
+Example:
+
+```json
+{
+  "manual_test_company_name": "Canva",
+  "manual_test_root_domain": "https://www.canva.com",
+  "manual_test_priority": "urgent",
+  "manual_test_partner_group": "vendor_partner",
+  "manual_test_relationship_context": "Manual middle-fit test prospect for partnership decisioning"
+}
+```
+
+This mode is useful for validating decision behavior across strong, middle, and weak prospects without manually editing MongoDB. If the manual test fields are absent, the workflow continues through the normal Apollo/Mongo queue path.
 
 ---
 
@@ -582,6 +615,8 @@ Recent validation runs confirmed:
 
 - a full Zapier-triggered/local pipeline run completed successfully with zero top-level errors
 - the latest decision-gating run completed in 36.1 seconds
+- manual test prospect mode can queue and assess a named company directly from webhook fields
+- manual test prospect mode skips Apollo discovery for that run and still uses the MongoDB queue
 - Apollo insufficient-credit responses are detected and skipped without blocking assessment
 - Apollo network/DNS/provider errors are configured to continue into the skip path
 - the AI page classifier loop processes selected pages through a single reusable lane
@@ -620,6 +655,7 @@ These examples are prototype test results derived from public-web data. They do 
 ## Key Capabilities
 
 - Zapier-compatible webhook intake
+- Webhook-driven manual test prospect seeding
 - Optional Apollo company discovery
 - Optional Clay enrichment handoff
 - MongoDB-backed queueing and retry state
