@@ -4,7 +4,7 @@ Brand prospect assessment, sponsor-fit scoring, decision support, and review-fir
 
 > Status: Active development. This repository currently documents the project architecture, workflow behavior, screenshots, and implementation notes. Credentials, API keys, database connection strings, local tunnel URLs, and environment-specific configuration are intentionally excluded.
 
-> Latest verified run: A Zapier-triggered/local n8n pipeline execution completed successfully with `max_companies_per_run = 3`. The run processed The Kitchen Pickleball, Reebok, and Canva once in the same execution; saved 30 page-evidence records; verified correct website page labels after the page-discovery fix; published one valid `pursue` decision; held two lower-confidence assessments out of outreach for future retry/manual review; generated one outreach draft; and marked the pipeline run complete with accurate batch counts. The workflow now reports clearer batch counts with `processed_job_count`, `publishable_job_count`, `review_required_job_count`, and `quality_gated_job_count`.
+> Latest verified run: A Zapier-triggered/local n8n pipeline execution completed successfully with `max_companies_per_run = 5`, using a 60-second cooldown after the first 3 companies. The run processed Canva, Franklin Sports, Microsoft, Wilson Sporting Goods, and Lifetime once in the same execution; published one quality-passed company assessment; held four fallback-only assessments for retry/manual review; and marked the pipeline run complete with MongoDB-backed final counts. The workflow now re-reads selected `brand_assessment_jobs` records before completion so `processed_job_count`, `completed_job_count`, `publishable_job_count`, `review_required_job_count`, `quality_gated_job_count`, and `retryable_job_count` reflect the actual saved job statuses.
 
 This project uses n8n to evaluate companies as potential sponsors, partners, vendors, media partners, facility partners, program partners, or activation partners for a target sports market. The current workflow is tuned for the pickleball ecosystem, but the intake fields and scoring model are designed to support other sports, events, venues, leagues, and commercial partnership categories.
 
@@ -47,7 +47,7 @@ The workflow combines:
 - Company-level decision support: `pursue`, `review`, `monitor`, or `reject`
 - Structured decision reason codes and previous-run change tracking
 - Validated controlled one-to-five company batch mode for queue processing
-- Airtable decision and outreach review outputs
+- Airtable decision outputs and gated outreach review outputs
 - Review-first outreach preparation with automatic owner-review email notifications
 - Manual outreach tracking and sender-domain readiness fields
 
@@ -94,7 +94,8 @@ Zapier or HTTP webhook trigger
 -> create contact placeholder/review records
 -> send owner-review email through SMTP/Gmail when enabled
 -> update MongoDB job status
--> mark pipeline run complete
+-> after the loop finishes, re-read selected MongoDB job records
+-> mark pipeline run complete with database-backed batch counts
 ```
 
 ---
@@ -103,7 +104,7 @@ Zapier or HTTP webhook trigger
 
 Current workflow snapshot:
 
-- 111 n8n nodes including disabled legacy/reference nodes
+- 116 n8n nodes including disabled legacy/reference nodes
 - Active Zapier-compatible webhook path: `partnership-pipeline-run`
 - MongoDB queue collection: `brand_assessment_jobs`
 - Page evidence collection: `brand_page_assessments`
@@ -117,8 +118,10 @@ Current workflow snapshot:
 - Page classification uses one looped extractor lane instead of duplicated parallel batch branches
 - Website page discovery preserves page labels such as `homepage`, `about`, `product_category`, `partners_or_sponsorship`, `events_or_athletes`, and `blog_or_news`
 - Decision outputs use `decision_v2` reason-code logic plus previous-assessment change tracking
+- Optional batch cooldown can pause after a configured number of processed companies
+- Final batch completion counts are computed from fresh MongoDB job records after loop completion
 
-The workflow supports a small controlled batch per manual or Zapier-triggered development run. The default remains one company, while `max_companies_per_run`, `company_batch_size`, or related queue-limit fields can raise the cap up to five companies. A 3-company batch run has been validated end to end with clean page storage, corrected page labels, brand-level de-dupe, quality-gated retry/manual-review outcomes, outreach gating, and final completion counts.
+The workflow supports a small controlled batch per manual or Zapier-triggered development run. The default remains one company, while `max_companies_per_run`, `company_batch_size`, or related queue-limit fields can raise the cap up to five companies. A 5-company batch run has been validated end to end with corrected page labels, brand-level de-dupe, quality-gated retry/manual-review outcomes, a 60-second post-third-company cooldown, outreach gating, and MongoDB-backed final completion counts.
 
 ---
 
@@ -150,7 +153,9 @@ Webhook clients such as Zapier can send fields like this:
   "event_sponsorship_priority": "high",
   "product_fit_priority": "high",
   "contact_discovery_required": false,
-  "max_companies_per_run": 3,
+  "max_companies_per_run": 5,
+  "cooldown_after_company_count": 3,
+  "batch_cooldown_seconds": 60,
   "pipeline_stale_after_minutes": 10,
   "outreach_delivery_platform": "review_only",
   "sender_domain": "testdomain.com",
@@ -166,6 +171,7 @@ Notes:
 - `search_page_size` controls Apollo page size when Apollo discovery is enabled.
 - Website crawl limits are controlled by runtime config, including `crawl_config.max_pages_total`.
 - `max_companies_per_run` controls the selected assessment queue batch size and is capped at 5 for stable manual and Zapier-driven development runs.
+- `cooldown_after_company_count` and `batch_cooldown_seconds` can pause a batch after a configured number of processed companies to reduce pressure on model/provider limits.
 - `pipeline_stale_after_minutes` can override the default lock timeout, capped between 1 and 90 minutes.
 - `manual_sender_email` and `owner_review_email_to` are runtime-configurable and should use placeholders in public documentation.
 - Prospect-facing sends are not automatic. The current delivery mode is review-first.
@@ -224,7 +230,9 @@ Batch example:
       "root_domain": "https://microsoft.com"
     }
   ],
-  "max_companies_per_run": 3
+  "max_companies_per_run": 5,
+  "cooldown_after_company_count": 3,
+  "batch_cooldown_seconds": 60
 }
 ```
 
@@ -440,7 +448,8 @@ Reliability behavior:
 
 - Pipeline run locks prevent overlapping runs.
 - Stale locks are ignored after the configured timeout.
-- Completed runs store processed, completed, retryable, and failed-provider job counts.
+- Completed runs store processed, completed, publishable, review-required, quality-gated, retryable, and failed-provider job counts.
+- Final batch counts are sourced from fresh MongoDB queue records after all per-job updates are written.
 - Apollo duplicate-only runs can continue into existing queued or retryable MongoDB jobs.
 - Apollo provider errors, credit limits, or network errors do not block existing MongoDB queue assessment.
 - Website evidence can override stale or incomplete enrichment metadata.
@@ -604,62 +613,69 @@ Smartlead, Instantly, or similar outbound platforms are planned as optional down
 
 ## Verified Output Example
 
-The latest exported controlled-batch test completed successfully with `max_companies_per_run = 3`.
+The latest exported controlled-batch test completed successfully with `max_companies_per_run = 5`, `cooldown_after_company_count = 3`, and `batch_cooldown_seconds = 60`.
 
 Verified execution summary:
 
 ```text
 Status: success
-Started at: 2026-05-23T12:24:33.861Z
-Stopped at: 2026-05-23T12:26:25.156Z
-Measured runtime: 111.3 seconds
+Started at: 2026-05-25T18:00:51.323Z
+Stopped at: 2026-05-25T18:03:04.516Z
+Measured runtime: 133.2 seconds
 Top-level errors: 0
-Companies selected: The Kitchen Pickleball, Reebok, Canva
+Companies selected: Canva, Franklin Sports, Microsoft, Wilson Sporting Goods, Lifetime
 Pipeline completion status: completed
+Cooldown behavior: waited once for 60 seconds after company 3
 ```
+
+Before marking the pipeline complete, the workflow re-read the selected `brand_assessment_jobs` records from MongoDB. That final database check returned all five selected jobs and produced the completion counts below.
 
 Batch completion output:
 
 ```json
 {
   "status": "completed",
-  "processed_job_count": 3,
-  "completed_job_count": 3,
+  "processed_job_count": 5,
+  "completed_job_count": 5,
   "publishable_job_count": 1,
-  "review_required_job_count": 2,
-  "quality_gated_job_count": 2,
-  "retryable_job_count": 2,
+  "review_required_job_count": 4,
+  "quality_gated_job_count": 4,
+  "retryable_job_count": 4,
   "failed_provider_job_count": 0,
-  "last_message": "Completed processing for 3 assessment job(s): 1 publishable, 2 held for review or future retry."
+  "last_message": "Completed processing for 5 assessment job(s): 1 publishable, 4 held for review or future retry."
 }
 ```
 
-In this output, `processed_job_count = 3` and `completed_job_count = 3` mean all three selected companies completed one assessment pass inside the same workflow execution. `publishable_job_count = 1` means one result passed the quality gate for decision/outreach publishing. `review_required_job_count = 2` and `quality_gated_job_count = 2` mean two results were held for manual review or future retry; they were not retried repeatedly inside that same run and were not published to outreach.
+In this output, `processed_job_count = 5` and `completed_job_count = 5` mean all five selected companies completed one assessment pass inside the same workflow execution. `publishable_job_count = 1` means one result passed the quality gate for decision/outreach publishing. `review_required_job_count = 4` and `quality_gated_job_count = 4` mean four results were held for manual review or future retry; they were not published to outreach.
 
-Company decision output:
+MongoDB job status check:
 
 ```json
 [
   {
-    "analyzed_organization": "The Kitchen Pickleball",
-    "brand_fit_score": 100,
-    "review_decision": "pursue",
-    "assessment_quality_status": "complete",
-    "needs_retry": false
-  },
-  {
-    "analyzed_organization": "Reebok",
-    "brand_fit_score": 60,
-    "review_decision": "review",
-    "assessment_quality_status": "needs_retry",
-    "needs_retry": true
-  },
-  {
     "analyzed_organization": "Canva",
-    "brand_fit_score": 53,
-    "review_decision": "review",
-    "assessment_quality_status": "needs_retry",
-    "needs_retry": true
+    "status": "completed",
+    "assessment_quality_status": "complete"
+  },
+  {
+    "analyzed_organization": "Franklin Sports",
+    "status": "needs_retry",
+    "assessment_quality_status": "needs_retry"
+  },
+  {
+    "analyzed_organization": "Microsoft",
+    "status": "needs_retry",
+    "assessment_quality_status": "needs_retry"
+  },
+  {
+    "analyzed_organization": "Wilson Sporting Goods",
+    "status": "needs_retry",
+    "assessment_quality_status": "needs_retry"
+  },
+  {
+    "analyzed_organization": "Lifetime",
+    "status": "needs_retry",
+    "assessment_quality_status": "needs_retry"
   }
 ]
 ```
@@ -668,11 +684,12 @@ Storage and outreach output:
 
 ```json
 {
-  "page_assessment_records_saved": 30,
   "brand_assessment_records_saved": 1,
   "airtable_decision_records_saved": 1,
-  "outreach_drafts_created": 1,
-  "contact_role_records_created": 5
+  "outreach_drafts_created": 0,
+  "publishable_company": "Canva",
+  "publishable_decision": "monitor",
+  "review_or_retry_companies": 4
 }
 ```
 
@@ -706,7 +723,7 @@ Recent test runs were used to confirm that the workflow can distinguish strong, 
 
 The Microsoft test is important because it shows that a large, well-known company can still be rejected when the public evidence does not support a credible pickleball partnership angle. The Canva test is important because it shows a moderate operational/content use case can be retained for monitoring without triggering outreach.
 
-Later Canva reruns were also used to validate the historical comparison layer. In the latest exported run, Canva scored `10`, stayed at `reject` compared with the latest previous completed assessment, and produced `decision_change_status = stable`.
+Later Canva reruns were also used to validate the historical comparison layer. In the latest exported run, Canva scored `44`, produced a quality-passed `monitor` decision, saved to the decision board, and did not generate outreach because the decision was below `pursue`.
 
 ---
 
@@ -714,7 +731,7 @@ Later Canva reruns were also used to validate the historical comparison layer. I
 
 ### Workflow Overview
 
-<img width="1664" height="376" alt="image" src="https://github.com/user-attachments/assets/2610f834-3da9-40cd-985f-54be017cde7a" />
+<img width="1672" height="403" alt="image" src="https://github.com/user-attachments/assets/d2525e2b-4767-4f31-808e-712fb7619fcc" />
 
 ### Airtable Review Output
 
@@ -731,21 +748,20 @@ Later Canva reruns were also used to validate the historical comparison layer. I
 Recent validation runs confirmed:
 
 - a full Zapier-triggered/local pipeline run completed successfully with zero top-level errors
-- the latest controlled 3-company batch run completed in 111.3 seconds
+- the latest controlled 5-company batch run completed in 133.2 seconds, including one configured 60-second cooldown
 - manual test prospect mode can queue and assess a named company directly from webhook fields
-- controlled batch mode processed 3 selected companies once in one pipeline run
-- page-level evidence storage saved 30 records for 3 companies x 10 pages
+- controlled batch mode processed 5 selected companies once in one pipeline run
 - page discovery now preserves differentiated page labels instead of collapsing all discovered URLs into `homepage`
 - brand-level de-dupe prevented duplicate MongoDB/Airtable decision records
-- final run status correctly reported 3 completed processed jobs, 1 publishable job, and 2 jobs held for review or future retry
+- final run status correctly reported 5 completed processed jobs, 1 publishable job, and 4 jobs held for review or future retry
 - manual test prospect mode skips Apollo discovery for that run and still uses the MongoDB queue
 - Apollo insufficient-credit responses are detected and skipped without blocking assessment
 - Apollo network/DNS/provider errors are configured to continue into the skip path
 - the AI page classifier loop processes selected pages through a single reusable lane
-- publishable assessments generate MongoDB assessment records, Airtable decision records, outreach drafts, contact-role records, and owner-email outputs
+- quality-passed assessments generate MongoDB assessment records and Airtable decision records; only `pursue` decisions continue into outreach drafts, contact-role records, and owner-email outputs
 - decision reason codes and summaries save into the decision record
 - the workflow compares each company against its latest previous completed assessment when history exists
-- stable decision-change output was verified for a repeated Canva `reject` run with zero score delta
+- decision-change output has been validated across repeated company runs, including stable and updated Canva assessments
 - `monitor` decisions save to `prospect_decisions` without generating outreach drafts
 - `reject` decisions save to `prospect_decisions` without generating outreach drafts
 - only `pursue` decisions currently generate outreach drafts and owner-review emails
@@ -753,6 +769,8 @@ Recent validation runs confirmed:
 - owner-review email configuration now comes from Zapier/webhook runtime fields
 - the pipeline run lock starts as `running` and finishes as `completed`
 - outreach drafts save to MongoDB and Airtable review tables
+- completion status now re-reads selected MongoDB queue records after the loop to avoid stale n8n loop-memory counts
+- batch cooldown after the third selected company was verified in a 5-company run
 - prospect decision records save to the `prospect_decisions` Airtable table
 - sender-domain inputs from Zapier flow into outreach readiness fields
 - manual outreach status and follow-up fields are available for review-first sending
@@ -784,12 +802,12 @@ These examples are prototype test results derived from public-web data. They do 
 
 - Zapier-compatible webhook intake
 - Webhook-driven manual test prospect seeding
-- Validated controlled small-batch queue processing
+- Validated controlled small-batch queue processing with optional cooldown
 - Optional Apollo company discovery
 - Optional Clay enrichment handoff
 - MongoDB-backed queueing and retry state
 - One-to-five company manual pipeline runs for stable development execution
-- Pipeline run lock with stale timeout and completion status
+- Pipeline run lock with stale timeout and MongoDB-backed completion status
 - Company/root-domain dedupe
 - Public-web page discovery and fetch validation
 - Corrected page-role labeling for discovered website URLs
@@ -815,7 +833,7 @@ These examples are prototype test results derived from public-web data. They do 
 
 - Keep validating the single-loop page classifier across broader company categories
 - Add automated retry scheduling for `failed_provider` and `needs_retry` jobs
-- Add stronger run-level observability for current node, provider failures, and request usage
+- Add stronger run-level observability for current node, provider failures, request usage, and retry reasons
 - Expand historical analytics beyond latest-previous comparison when enough assessment history exists
 - Further simplify MongoDB queue seed records into a minimal input schema
 - Improve automated discovery of company websites when only a company name is provided
