@@ -808,7 +808,7 @@ Later middle-fit prospect reruns were also used to validate the historical compa
 
 ### Workflow Overview
 
-<img width="1672" height="403" alt="image" src="https://github.com/user-attachments/assets/d2525e2b-4767-4f31-808e-712fb7619fcc" />
+<img width="1660" height="269" alt="image" src="https://github.com/user-attachments/assets/d92cf225-cd67-44f3-9c12-3f9e98450d3d" />
 
 ### Airtable Review Output
 
