@@ -4,7 +4,7 @@ Brand prospect assessment, sponsor-fit scoring, decision support, and review-fir
 
 > Status: Active development. This repository currently documents the project architecture, workflow behavior, screenshots, and implementation notes. Credentials, API keys, database connection strings, local tunnel URLs, and environment-specific configuration are intentionally excluded.
 
-> Latest verified run: A Zapier-triggered/local n8n pipeline execution completed successfully with `max_companies_per_run = 5`, using a 60-second cooldown after the first 3 companies. The run processed Prospect A, Prospect B, Prospect C, Prospect D, and Prospect E once in the same execution; published one quality-passed company assessment; held four fallback-only assessments for retry/manual review; and marked the pipeline run complete with MongoDB-backed final counts. The workflow now re-reads selected `brand_assessment_jobs` records before completion so `processed_job_count`, `completed_job_count`, `publishable_job_count`, `review_required_job_count`, `quality_gated_job_count`, and `retryable_job_count` reflect the actual saved job statuses.
+> Latest verified run: A Zapier-triggered/local n8n pipeline execution completed successfully with `max_companies_per_run = 5`, using a 60-second cooldown after the first 3 companies. The run processed Prospect A, Prospect B, Prospect C, Prospect D, and Prospect E once in the same execution; saved one publishable company assessment; held four fallback-only assessments for manual review; and marked the pipeline run complete with MongoDB-backed final counts. The workflow now re-reads selected `brand_assessment_jobs` records before completion so `processed_job_count`, `completed_job_count`, `publishable_job_count`, `review_required_job_count`, `quality_gated_job_count`, and `retryable_job_count` reflect the actual saved job statuses. Review-only quality gates are separated from true retryable technical failures.
 
 This project uses n8n to evaluate companies as potential sponsors, partners, vendors, media partners, facility partners, program partners, or activation partners for a target sports market. The current workflow is tuned for the pickleball ecosystem, but the intake fields and scoring model are designed to support other sports, events, venues, leagues, and commercial partnership categories.
 
@@ -14,6 +14,53 @@ The system is designed to answer:
 Given a target sports market and an outside company,
 is this company worth pursuing, reviewing, monitoring, or rejecting as a partnership prospect?
 ```
+
+---
+
+## How to Review This Project
+
+If you are reviewing this project quickly, start with these sections:
+
+- **Overview**: what problem the pipeline solves and why the workflow exists
+- **Product Flow**: the end-to-end user and system journey
+- **Decision Layer**: how raw website evidence becomes a pursue/review/monitor/reject recommendation
+- **Reliability Model**: how the workflow handles bad pages, provider errors, retries, and run locks
+- **Verified Output Example**: the latest successful 5-company batch run and final MongoDB-backed counts
+- **Portfolio Screenshots**: workflow, Airtable review output, and Zapier trigger setup
+
+The strongest product signal is not that the workflow can scrape pages. It is that the system turns noisy public-web evidence into reviewable partnership decisions, keeps operational state in MongoDB, prevents weak or failed assessments from becoming outreach, and gives a human reviewer a clear next step.
+
+---
+
+## Product Flow
+
+```text
+Company intake
+-> queue and dedupe jobs
+-> inspect public website evidence
+-> classify page-level partnership signals
+-> score and aggregate company fit
+-> produce a review decision
+-> save the decision board record
+-> gate outreach unless the decision is strong enough
+-> update run status from MongoDB job state
+```
+
+This keeps the workflow focused on decision support before outreach. A company can complete assessment without automatically receiving an outreach draft; only publishable `pursue` decisions move into outreach preparation.
+
+---
+
+## Why This Matters
+
+Partnership teams often waste time on prospects that look attractive by brand recognition but have weak evidence for the actual sports market. This workflow separates direct fits, adjacent fits, middle-confidence vendors, weak prospects, and review-needed assessments before outreach happens.
+
+The practical value is a repeatable review system:
+
+- stronger prioritization before manual outreach
+- evidence-backed reasoning instead of gut feel
+- controlled retry handling for failed or thin assessments
+- a clear split between operational state and human review outputs
+- safer outreach gating so uncertain records do not become prospect-facing messages
 
 ---
 
@@ -121,7 +168,7 @@ Current workflow snapshot:
 - Optional batch cooldown can pause after a configured number of processed companies
 - Final batch completion counts are computed from fresh MongoDB job records after loop completion
 
-The workflow supports a small controlled batch per manual or Zapier-triggered development run. The default remains one company, while `max_companies_per_run`, `company_batch_size`, or related queue-limit fields can raise the cap up to five companies. A 5-company batch run has been validated end to end with corrected page labels, brand-level de-dupe, quality-gated retry/manual-review outcomes, a 60-second post-third-company cooldown, outreach gating, and MongoDB-backed final completion counts.
+The workflow supports a small controlled batch per manual or Zapier-triggered development run. The default remains one company, while `max_companies_per_run`, `company_batch_size`, or related queue-limit fields can raise the cap up to five companies. A 5-company batch run has been validated end to end with corrected page labels, brand-level de-dupe, quality-gated manual-review outcomes, a 60-second post-third-company cooldown, outreach gating, and MongoDB-backed final completion counts.
 
 ---
 
@@ -456,8 +503,17 @@ Reliability behavior:
 - Blocked, empty, failed, and soft-404 pages produce fallback records instead of disappearing silently.
 - Suspicious or hijacked-looking domains can be rejected deterministically before wasting model calls.
 - Model/provider failures are marked as `failed_provider` or `needs_retry` instead of being published as completed assessments.
-- Quality gates prevent provider-error assessments from being treated as review-ready results.
+- Quality gates prevent provider-error assessments from being treated as publishable results.
 - Failed-provider assessments are blocked from outreach until a publishable assessment exists.
+
+Status model:
+
+```text
+status = execution state, such as queued, running, completed, or failed_provider
+assessment_quality_status = output quality, such as publishable, needs_review, needs_retry, or failed_provider
+```
+
+A publishable assessment can finish with `status = completed` and `assessment_quality_status = publishable`, while a fallback-heavy assessment can finish with `status = completed` and `assessment_quality_status = needs_review`. `publishable` means the output can be saved to the decision/review layer. It does not automatically mean outreach is approved; outreach still depends on `review_decision`. `needs_review` means the workflow ran correctly, but the result should only be saved as a manual-review record, not as a full publishable assessment or outreach input. `needs_retry` is reserved for technical/provider retry cases.
 
 ---
 
@@ -539,7 +595,7 @@ The queue is intentionally lightweight. Detailed evidence, scoring, decision, an
 
 ## Airtable Review Architecture
 
-Airtable is used for human review, filtering, prioritization, and approval.
+Airtable is used for human review, filtering, prioritization, and approval. Publishable assessments and manual-review assessment outcomes both use the `prospect_decisions` table, but only publishable `pursue` decisions continue into outreach draft generation.
 
 Active review tables:
 
@@ -613,7 +669,7 @@ Smartlead, Instantly, or similar outbound platforms are planned as optional down
 
 ## Verified Output Example
 
-The latest exported controlled-batch test completed successfully with `max_companies_per_run = 5`, `cooldown_after_company_count = 3`, and `batch_cooldown_seconds = 60`.
+A recent controlled-batch test completed successfully with `max_companies_per_run = 5`, `cooldown_after_company_count = 3`, and `batch_cooldown_seconds = 60`. The status model has since been clarified so publishable decision-board results use `assessment_quality_status = publishable`, while fallback-heavy results use `assessment_quality_status = needs_review`.
 
 Verified execution summary:
 
@@ -640,56 +696,77 @@ Batch completion output:
   "publishable_job_count": 1,
   "review_required_job_count": 4,
   "quality_gated_job_count": 4,
-  "retryable_job_count": 4,
+  "retryable_job_count": 0,
   "failed_provider_job_count": 0,
-  "last_message": "Completed processing for 5 assessment job(s): 1 publishable, 4 held for review or future retry."
+  "last_message": "Completed processing for 5 assessment job(s): 1 publishable, 4 held for review."
 }
 ```
 
-In this output, `processed_job_count = 5` and `completed_job_count = 5` mean all five selected companies completed one assessment pass inside the same workflow execution. `publishable_job_count = 1` means one result passed the quality gate for decision/outreach publishing. `review_required_job_count = 4` and `quality_gated_job_count = 4` mean four results were held for manual review or future retry; they were not published to outreach.
+In this output, `processed_job_count = 5` and `completed_job_count = 5` mean all five selected companies reached an end state inside the same workflow execution. `publishable_job_count = 1` means one result was publishable and passed the quality gate for decision-board publishing. `review_required_job_count = 4` and `quality_gated_job_count = 4` mean four results completed but were held for manual review. `retryable_job_count = 0` means none of those four were treated as technical retry failures.
 
-MongoDB job status check:
+Representative decision-board output after the manual-review branch:
 
 ```json
 [
   {
     "analyzed_organization": "Prospect A",
     "status": "completed",
-    "assessment_quality_status": "complete"
+    "assessment_quality_status": "publishable",
+    "approval_status": "needs_review",
+    "brand_fit_score": 92,
+    "review_decision": "pursue",
+    "next_human_step": "Review the top evidence pages, verify the right contact, then approve the outreach draft."
   },
   {
     "analyzed_organization": "Prospect B",
-    "status": "needs_retry",
-    "assessment_quality_status": "needs_retry"
+    "status": "completed",
+    "assessment_quality_status": "needs_review",
+    "approval_status": "needs_manual_review",
+    "brand_fit_score": 65,
+    "review_decision": "review",
+    "manual_review_reason": "All usable pages used fallback or insufficient-evidence records; manual review is needed before publishing."
   },
   {
     "analyzed_organization": "Prospect C",
-    "status": "needs_retry",
-    "assessment_quality_status": "needs_retry"
+    "status": "completed",
+    "assessment_quality_status": "needs_review",
+    "approval_status": "needs_manual_review",
+    "brand_fit_score": 60,
+    "review_decision": "review",
+    "manual_review_reason": "All usable pages used fallback or insufficient-evidence records; manual review is needed before publishing."
   },
   {
     "analyzed_organization": "Prospect D",
-    "status": "needs_retry",
-    "assessment_quality_status": "needs_retry"
+    "status": "completed",
+    "assessment_quality_status": "needs_review",
+    "approval_status": "needs_manual_review",
+    "brand_fit_score": 4,
+    "review_decision": "reject",
+    "manual_review_reason": "Assessment produced a very low score and requires manual verification before any action."
   },
   {
     "analyzed_organization": "Prospect E",
-    "status": "needs_retry",
-    "assessment_quality_status": "needs_retry"
+    "status": "completed",
+    "assessment_quality_status": "needs_review",
+    "approval_status": "needs_manual_review",
+    "brand_fit_score": 63,
+    "review_decision": "review",
+    "manual_review_reason": "All usable pages used fallback or insufficient-evidence records; manual review is needed before publishing."
   }
 ]
 ```
 
-Storage and outreach output:
+Representative storage, manual-review, and outreach output:
 
 ```json
 {
   "brand_assessment_records_saved": 1,
-  "airtable_decision_records_saved": 1,
-  "outreach_drafts_created": 0,
+  "airtable_decision_records_saved": 5,
+  "manual_review_decision_records_saved": 4,
+  "outreach_drafts_created": 1,
   "publishable_company": "Prospect A",
-  "publishable_decision": "monitor",
-  "review_or_retry_companies": 4
+  "publishable_decision": "pursue",
+  "manual_review_companies": 4
 }
 ```
 
@@ -706,7 +783,7 @@ blog_or_news
 
 The outreach branch creates review-ready email drafts, owner-review email notifications, manual outreach status fields, and contact-role placeholders before any prospect-facing send step is considered.
 
-Only `pursue` decisions generate outreach drafts automatically. `review`, `monitor`, `reject`, and `needs_retry` assessments are held back from prospect-facing outreach.
+`needs_review` assessments now save lightweight manual-review records to the Airtable decision board with score, quality status, source URLs, risk, and next human step. Only `pursue` decisions generate outreach drafts automatically. `review`, `monitor`, `reject`, `needs_review`, and technical `needs_retry` assessments are held back from prospect-facing outreach.
 
 ---
 
@@ -723,7 +800,7 @@ Recent test runs were used to confirm that the workflow can distinguish strong, 
 
 The weak-fit enterprise prospect test is important because it shows that a large, well-known company can still be rejected when the public evidence does not support a credible target-market partnership angle. The middle-fit vendor test is important because it shows a moderate operational/content use case can be retained for monitoring without triggering outreach.
 
-Later middle-fit prospect reruns were also used to validate the historical comparison layer. In the latest exported run, the anonymized middle-fit prospect scored `44`, produced a quality-passed `monitor` decision, saved to the decision board, and did not generate outreach because the decision was below `pursue`.
+Later middle-fit prospect reruns were also used to validate the historical comparison layer. In the latest exported run, the anonymized middle-fit prospect produced a publishable decision-board record while remaining separate from stronger `pursue` examples used for outreach validation.
 
 ---
 
@@ -753,25 +830,25 @@ Recent validation runs confirmed:
 - controlled batch mode processed 5 selected companies once in one pipeline run
 - page discovery now preserves differentiated page labels instead of collapsing all discovered URLs into `homepage`
 - brand-level de-dupe prevented duplicate MongoDB/Airtable decision records
-- final run status correctly reported 5 completed processed jobs, 1 publishable job, and 4 jobs held for review or future retry
+- final run status correctly separates completed processing from publishable, manual-review, and retryable outcomes
 - manual test prospect mode skips Apollo discovery for that run and still uses the MongoDB queue
 - Apollo insufficient-credit responses are detected and skipped without blocking assessment
 - Apollo network/DNS/provider errors are configured to continue into the skip path
 - the AI page classifier loop processes selected pages through a single reusable lane
-- quality-passed assessments generate MongoDB assessment records and Airtable decision records; only `pursue` decisions continue into outreach drafts, contact-role records, and owner-email outputs
+- publishable assessments generate MongoDB assessment records and Airtable decision records; `needs_review` assessments generate Airtable manual-review decision records with score and reason; only `pursue` decisions continue into outreach drafts, contact-role records, and owner-email outputs
 - decision reason codes and summaries save into the decision record
 - the workflow compares each company against its latest previous completed assessment when history exists
 - decision-change output has been validated across repeated company runs, including stable and updated anonymized prospect assessments
 - `monitor` decisions save to `prospect_decisions` without generating outreach drafts
 - `reject` decisions save to `prospect_decisions` without generating outreach drafts
 - only `pursue` decisions currently generate outreach drafts and owner-review emails
-- `needs_retry` assessments are excluded from decision-board publishing and outreach draft generation
+- `needs_review` and technical `needs_retry` assessments are excluded from outreach draft generation while still preserving manual-review context where appropriate
 - owner-review email configuration now comes from Zapier/webhook runtime fields
 - the pipeline run lock starts as `running` and finishes as `completed`
 - outreach drafts save to MongoDB and Airtable review tables
 - completion status now re-reads selected MongoDB queue records after the loop to avoid stale n8n loop-memory counts
 - batch cooldown after the third selected company was verified in a 5-company run
-- prospect decision records save to the `prospect_decisions` Airtable table
+- prospect decision records and manual-review records save to the `prospect_decisions` Airtable table
 - sender-domain inputs from Zapier flow into outreach readiness fields
 - manual outreach status and follow-up fields are available for review-first sending
 - failed-provider assessments are blocked from outreach until a publishable assessment exists
@@ -832,7 +909,7 @@ These examples are prototype test results derived from public-web data. They do 
 ## Roadmap
 
 - Keep validating the single-loop page classifier across broader company categories
-- Add automated retry scheduling for `failed_provider` and `needs_retry` jobs
+- Add automated retry scheduling for true technical retry states such as `failed_provider` and `needs_retry` jobs
 - Add stronger run-level observability for current node, provider failures, request usage, and retry reasons
 - Expand historical analytics beyond latest-previous comparison when enough assessment history exists
 - Further simplify MongoDB queue seed records into a minimal input schema
@@ -864,21 +941,10 @@ These examples are prototype test results derived from public-web data. They do 
 ## Potential Use Cases
 
 - Sponsor prospect qualification
-- Brand fit scoring
 - Partnership target discovery
 - Outreach prioritization
 - Sponsorship category research
 - Manual outreach preparation
 - Historical monitoring of public commercial signals
 - Sport-level partnership intelligence
-- Ecosystem-level sponsor discovery
 
----
-
-## Why This Matters
-
-This is more than a scraping workflow.
-
-The project combines webhook-triggered automation, optional prospect discovery, public-web extraction, AI-assisted classification, deterministic scoring, retryable operational state, structured decision outputs, and review-first outreach preparation.
-
-The goal is to help identify which organizations and brands are actually worth pursuing, reviewing, monitoring, or rejecting for partnership outreach.
