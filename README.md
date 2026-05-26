@@ -4,7 +4,7 @@ Brand prospect assessment, sponsor-fit scoring, decision support, and review-fir
 
 > Status: Active development. This repository currently documents the project architecture, workflow behavior, screenshots, and implementation notes. Credentials, API keys, database connection strings, local tunnel URLs, and environment-specific configuration are intentionally excluded.
 
-> Latest verified run: A Zapier-triggered/local n8n pipeline execution completed successfully with `max_companies_per_run = 5`, using a 60-second cooldown after the first 3 companies. The run processed Prospect A, Prospect B, Prospect C, Prospect D, and Prospect E once in the same execution; saved one publishable company assessment; held four fallback-only assessments for manual review; and marked the pipeline run complete with MongoDB-backed final counts. The workflow now re-reads selected `brand_assessment_jobs` records before completion so `processed_job_count`, `completed_job_count`, `publishable_job_count`, `review_required_job_count`, `quality_gated_job_count`, and `retryable_job_count` reflect the actual saved job statuses. Review-only quality gates are separated from true retryable technical failures.
+> Latest verified run: A Zapier-triggered/local n8n pipeline execution completed successfully with `max_companies_per_run = 5`, using 60-second cooldowns after every 2 processed companies. The run processed Prospect A, Prospect B, Prospect C, Prospect D, and Prospect E once in the same execution; saved one publishable company assessment; held four fallback-only assessments for manual review; and marked the pipeline run complete with MongoDB-backed final counts. The workflow now re-reads selected `brand_assessment_jobs` records before completion so `processed_job_count`, `completed_job_count`, `publishable_job_count`, `review_required_job_count`, `quality_gated_job_count`, and `retryable_job_count` reflect the actual saved job statuses. Review-only quality gates are separated from true retryable technical failures.
 
 This project uses n8n to evaluate companies as potential sponsors, partners, vendors, media partners, facility partners, program partners, or activation partners for a target sports market. The current workflow is tuned for the pickleball ecosystem, but the intake fields and scoring model are designed to support other sports, events, venues, leagues, and commercial partnership categories.
 
@@ -168,7 +168,7 @@ Current workflow snapshot:
 - Optional batch cooldown can pause after a configured number of processed companies
 - Final batch completion counts are computed from fresh MongoDB job records after loop completion
 
-The workflow supports a small controlled batch per manual or Zapier-triggered development run. The default remains one company, while `max_companies_per_run`, `company_batch_size`, or related queue-limit fields can raise the cap up to five companies. A 5-company batch run has been validated end to end with corrected page labels, brand-level de-dupe, quality-gated manual-review outcomes, a 60-second post-third-company cooldown, outreach gating, and MongoDB-backed final completion counts.
+The workflow supports a small controlled batch per manual or Zapier-triggered development run. The default remains one company, while `max_companies_per_run`, `company_batch_size`, or related queue-limit fields can raise the cap up to five companies. A 5-company batch run has been validated end to end with corrected page labels, brand-level de-dupe, quality-gated manual-review outcomes, 60-second cooldowns after every 2 processed companies, outreach gating, and MongoDB-backed final completion counts.
 
 ---
 
@@ -201,7 +201,7 @@ Webhook clients such as Zapier can send fields like this:
   "product_fit_priority": "high",
   "contact_discovery_required": false,
   "max_companies_per_run": 5,
-  "cooldown_after_company_count": 3,
+  "cooldown_after_company_count": 2,
   "batch_cooldown_seconds": 60,
   "pipeline_stale_after_minutes": 10,
   "outreach_delivery_platform": "review_only",
@@ -278,7 +278,7 @@ Batch example:
     }
   ],
   "max_companies_per_run": 5,
-  "cooldown_after_company_count": 3,
+  "cooldown_after_company_count": 2,
   "batch_cooldown_seconds": 60
 }
 ```
@@ -669,19 +669,20 @@ Smartlead, Instantly, or similar outbound platforms are planned as optional down
 
 ## Verified Output Example
 
-A recent controlled-batch test completed successfully with `max_companies_per_run = 5`, `cooldown_after_company_count = 3`, and `batch_cooldown_seconds = 60`. The status model has since been clarified so publishable decision-board results use `assessment_quality_status = publishable`, while fallback-heavy results use `assessment_quality_status = needs_review`.
+The latest controlled-batch test completed successfully with `max_companies_per_run = 5`, `cooldown_after_company_count = 2`, and `batch_cooldown_seconds = 60`. The status model has since been clarified so publishable decision-board results use `assessment_quality_status = publishable`, while fallback-heavy results use `assessment_quality_status = needs_review`.
 
 Verified execution summary:
 
 ```text
 Status: success
-Started at: 2026-05-25T18:00:51.323Z
-Stopped at: 2026-05-25T18:03:04.516Z
-Measured runtime: 133.2 seconds
+Started at: 2026-05-26T14:17:10.908Z
+Stopped at: 2026-05-26T14:20:04.845Z
+Measured runtime: 173.9 seconds
 Top-level errors: 0
 Companies selected: Prospect A, Prospect B, Prospect C, Prospect D, Prospect E
 Pipeline completion status: completed
-Cooldown behavior: waited once for 60 seconds after company 3
+Observed Gemini RPM after run: 7 / 15
+Cooldown behavior: waited twice for 60 seconds after company 2 and company 4
 ```
 
 Before marking the pipeline complete, the workflow re-read the selected `brand_assessment_jobs` records from MongoDB. That final database check returned all five selected jobs and produced the completion counts below.
@@ -756,19 +757,21 @@ Representative decision-board output after the manual-review branch:
 ]
 ```
 
-Representative storage, manual-review, and outreach output:
+Latest storage, manual-review, and outreach output:
 
 ```json
 {
   "brand_assessment_records_saved": 1,
   "airtable_decision_records_saved": 5,
   "manual_review_decision_records_saved": 4,
-  "outreach_drafts_created": 1,
+  "outreach_drafts_created": 0,
   "publishable_company": "Prospect A",
-  "publishable_decision": "pursue",
+  "publishable_decision": "monitor",
   "manual_review_companies": 4
 }
 ```
+
+In this latest run, the publishable company was saved to the decision board but did not generate outreach because its `review_decision` was `monitor`, not `pursue`.
 
 Website page discovery was also verified in this run. Page evidence now preserves the expected labels instead of incorrectly treating every discovered URL as a homepage:
 
@@ -825,7 +828,7 @@ Later middle-fit prospect reruns were also used to validate the historical compa
 Recent validation runs confirmed:
 
 - a full Zapier-triggered/local pipeline run completed successfully with zero top-level errors
-- the latest controlled 5-company batch run completed in 133.2 seconds, including one configured 60-second cooldown
+- the latest controlled 5-company batch run completed in 173.9 seconds with two configured 60-second cooldowns and observed Gemini RPM at 7/15
 - manual test prospect mode can queue and assess a named company directly from webhook fields
 - controlled batch mode processed 5 selected companies once in one pipeline run
 - page discovery now preserves differentiated page labels instead of collapsing all discovered URLs into `homepage`
@@ -841,13 +844,13 @@ Recent validation runs confirmed:
 - decision-change output has been validated across repeated company runs, including stable and updated anonymized prospect assessments
 - `monitor` decisions save to `prospect_decisions` without generating outreach drafts
 - `reject` decisions save to `prospect_decisions` without generating outreach drafts
-- only `pursue` decisions currently generate outreach drafts and owner-review emails
+- only `pursue` decisions currently generate outreach drafts and owner-review emails; the latest publishable `monitor` result correctly generated no outreach draft
 - `needs_review` and technical `needs_retry` assessments are excluded from outreach draft generation while still preserving manual-review context where appropriate
 - owner-review email configuration now comes from Zapier/webhook runtime fields
 - the pipeline run lock starts as `running` and finishes as `completed`
 - outreach drafts save to MongoDB and Airtable review tables
 - completion status now re-reads selected MongoDB queue records after the loop to avoid stale n8n loop-memory counts
-- batch cooldown after the third selected company was verified in a 5-company run
+- batch cooldown after every 2 processed companies was verified in a 5-company run
 - prospect decision records and manual-review records save to the `prospect_decisions` Airtable table
 - sender-domain inputs from Zapier flow into outreach readiness fields
 - manual outreach status and follow-up fields are available for review-first sending
