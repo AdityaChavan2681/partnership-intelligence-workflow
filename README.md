@@ -4,7 +4,7 @@ Brand prospect assessment, sponsor-fit scoring, decision support, and review-fir
 
 > Status: Active development. This repository currently documents the project architecture, workflow behavior, screenshots, and implementation notes. Credentials, API keys, database connection strings, local tunnel URLs, and environment-specific configuration are intentionally excluded.
 
-> Latest verified run: A Zapier-triggered/local n8n pipeline execution completed successfully with `max_companies_per_run = 5`, using a 60-second cooldown after the first 3 companies. The run processed Canva, Franklin Sports, Microsoft, Wilson Sporting Goods, and Lifetime once in the same execution; published one quality-passed company assessment; held four fallback-only assessments for retry/manual review; and marked the pipeline run complete with MongoDB-backed final counts. The workflow now re-reads selected `brand_assessment_jobs` records before completion so `processed_job_count`, `completed_job_count`, `publishable_job_count`, `review_required_job_count`, `quality_gated_job_count`, and `retryable_job_count` reflect the actual saved job statuses.
+> Latest verified run: A Zapier-triggered/local n8n pipeline execution completed successfully with `max_companies_per_run = 5`, using a 60-second cooldown after the first 3 companies. The run processed Prospect A, Prospect B, Prospect C, Prospect D, and Prospect E once in the same execution; published one quality-passed company assessment; held four fallback-only assessments for retry/manual review; and marked the pipeline run complete with MongoDB-backed final counts. The workflow now re-reads selected `brand_assessment_jobs` records before completion so `processed_job_count`, `completed_job_count`, `publishable_job_count`, `review_required_job_count`, `quality_gated_job_count`, and `retryable_job_count` reflect the actual saved job statuses.
 
 This project uses n8n to evaluate companies as potential sponsors, partners, vendors, media partners, facility partners, program partners, or activation partners for a target sports market. The current workflow is tuned for the pickleball ecosystem, but the intake fields and scoring model are designed to support other sports, events, venues, leagues, and commercial partnership categories.
 
@@ -112,7 +112,7 @@ Current workflow snapshot:
 - Outreach draft collection: `outreach_drafts`
 - Pipeline status collections: `pipeline_run_status`, `pipeline_run_events`
 - Current model routing: `models/gemini-3.1-flash-lite`
-- Owner-review email sender used in testing: `n8nemailtestpartner@gmail.com`
+- Owner-review email sender used in testing: `test-sender@example.com`
 - Default stale lock timeout for development/manual runs: 10 minutes
 - Manual/dev pipeline run size: 1 to 5 companies per run, capped by runtime input
 - Page classification uses one looped extractor lane instead of duplicated parallel batch branches
@@ -202,8 +202,8 @@ Single-company example:
 
 ```json
 {
-  "manual_test_company_name": "Canva",
-  "manual_test_root_domain": "https://www.canva.com",
+  "manual_test_company_name": "Prospect A",
+  "manual_test_root_domain": "https://prospect-a.example",
   "manual_test_priority": "urgent",
   "manual_test_partner_group": "vendor_partner",
   "manual_test_relationship_context": "Manual middle-fit test prospect for partnership decisioning"
@@ -216,18 +216,18 @@ Batch example:
 {
   "manual_test_companies": [
     {
-      "name": "JOOLA",
-      "root_domain": "https://joola.com",
+      "name": "Prospect Alpha",
+      "root_domain": "https://prospect-alpha.example",
       "priority": "urgent"
     },
     {
-      "name": "Canva",
-      "root_domain": "https://www.canva.com",
+      "name": "Prospect A",
+      "root_domain": "https://prospect-a.example",
       "partner_group": "vendor_partner"
     },
     {
-      "name": "Microsoft",
-      "root_domain": "https://microsoft.com"
+      "name": "Prospect C",
+      "root_domain": "https://prospect-c.example"
     }
   ],
   "max_companies_per_run": 5,
@@ -623,7 +623,7 @@ Started at: 2026-05-25T18:00:51.323Z
 Stopped at: 2026-05-25T18:03:04.516Z
 Measured runtime: 133.2 seconds
 Top-level errors: 0
-Companies selected: Canva, Franklin Sports, Microsoft, Wilson Sporting Goods, Lifetime
+Companies selected: Prospect A, Prospect B, Prospect C, Prospect D, Prospect E
 Pipeline completion status: completed
 Cooldown behavior: waited once for 60 seconds after company 3
 ```
@@ -653,27 +653,27 @@ MongoDB job status check:
 ```json
 [
   {
-    "analyzed_organization": "Canva",
+    "analyzed_organization": "Prospect A",
     "status": "completed",
     "assessment_quality_status": "complete"
   },
   {
-    "analyzed_organization": "Franklin Sports",
+    "analyzed_organization": "Prospect B",
     "status": "needs_retry",
     "assessment_quality_status": "needs_retry"
   },
   {
-    "analyzed_organization": "Microsoft",
+    "analyzed_organization": "Prospect C",
     "status": "needs_retry",
     "assessment_quality_status": "needs_retry"
   },
   {
-    "analyzed_organization": "Wilson Sporting Goods",
+    "analyzed_organization": "Prospect D",
     "status": "needs_retry",
     "assessment_quality_status": "needs_retry"
   },
   {
-    "analyzed_organization": "Lifetime",
+    "analyzed_organization": "Prospect E",
     "status": "needs_retry",
     "assessment_quality_status": "needs_retry"
   }
@@ -687,7 +687,7 @@ Storage and outreach output:
   "brand_assessment_records_saved": 1,
   "airtable_decision_records_saved": 1,
   "outreach_drafts_created": 0,
-  "publishable_company": "Canva",
+  "publishable_company": "Prospect A",
   "publishable_decision": "monitor",
   "review_or_retry_companies": 4
 }
@@ -716,14 +716,14 @@ Recent test runs were used to confirm that the workflow can distinguish strong, 
 
 | Company | Fit Pattern | Score | Decision | Outreach Draft |
 |---|---:|---:|---|---|
-| Recess Pickleball | direct pickleball product fit | 100 | pursue | yes |
-| Liquid I.V. | adjacent hydration/event activation fit | 100 | pursue | yes |
-| Canva | middle vendor/content support fit | 47 | monitor | no |
-| Microsoft | weak/non-sport-specific fit | 6 | reject | no |
+| Direct Equipment Brand | direct pickleball product fit | 100 | pursue | yes |
+| Adjacent Hydration Brand | adjacent hydration/event activation fit | 100 | pursue | yes |
+| Prospect A | middle vendor/content support fit | 47 | monitor | no |
+| Prospect C | weak/non-sport-specific fit | 6 | reject | no |
 
-The Microsoft test is important because it shows that a large, well-known company can still be rejected when the public evidence does not support a credible pickleball partnership angle. The Canva test is important because it shows a moderate operational/content use case can be retained for monitoring without triggering outreach.
+The weak-fit enterprise prospect test is important because it shows that a large, well-known company can still be rejected when the public evidence does not support a credible target-market partnership angle. The middle-fit vendor test is important because it shows a moderate operational/content use case can be retained for monitoring without triggering outreach.
 
-Later Canva reruns were also used to validate the historical comparison layer. In the latest exported run, Canva scored `44`, produced a quality-passed `monitor` decision, saved to the decision board, and did not generate outreach because the decision was below `pursue`.
+Later middle-fit prospect reruns were also used to validate the historical comparison layer. In the latest exported run, the anonymized middle-fit prospect scored `44`, produced a quality-passed `monitor` decision, saved to the decision board, and did not generate outreach because the decision was below `pursue`.
 
 ---
 
@@ -761,7 +761,7 @@ Recent validation runs confirmed:
 - quality-passed assessments generate MongoDB assessment records and Airtable decision records; only `pursue` decisions continue into outreach drafts, contact-role records, and owner-email outputs
 - decision reason codes and summaries save into the decision record
 - the workflow compares each company against its latest previous completed assessment when history exists
-- decision-change output has been validated across repeated company runs, including stable and updated Canva assessments
+- decision-change output has been validated across repeated company runs, including stable and updated anonymized prospect assessments
 - `monitor` decisions save to `prospect_decisions` without generating outreach drafts
 - `reject` decisions save to `prospect_decisions` without generating outreach drafts
 - only `pursue` decisions currently generate outreach drafts and owner-review emails
