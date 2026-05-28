@@ -22,17 +22,17 @@ is this company worth pursuing, reviewing, monitoring, or rejecting as a partner
 If you are reviewing this project quickly, start with these sections:
 
 - **Overview**: what problem the pipeline solves and why the workflow exists
-- **Product Flow**: the end-to-end user and system journey
+- **Workflow Flow**: the end-to-end intake, assessment, review, and storage journey
 - **Decision Layer**: how raw website evidence becomes a pursue/review/monitor/reject recommendation
 - **Reliability Model**: how the workflow handles bad pages, provider errors, retries, and run locks
 - **Verified Output Example**: the latest successful 5-company batch run and final MongoDB-backed counts
 - **Portfolio Screenshots**: workflow, Airtable review output, and Zapier trigger setup
 
-The strongest product signal is not that the workflow can scrape pages. It is that the system turns noisy public-web evidence into reviewable partnership decisions, keeps operational state in MongoDB, prevents weak or failed assessments from becoming outreach, and gives a human reviewer a clear next step.
+The strongest implementation signal is not that the workflow can scrape pages. It is that the system turns noisy public-web evidence into reviewable partnership decisions, keeps operational state in MongoDB, prevents weak or failed assessments from becoming outreach, and gives a human reviewer a clear next step.
 
 ---
 
-## Product Flow
+## Workflow Flow
 
 ```text
 Company intake
@@ -76,7 +76,7 @@ Local testing and debugging may use PowerShell commands, n8n API calls, executio
 
 ## Overview
 
-Partnership teams often evaluate prospects from scattered public signals: homepages, product pages, partner pages, athlete pages, event pages, blog posts, media pages, and contact pages. Those signals are useful, but they are noisy and hard to compare manually.
+Partnership teams often evaluate prospects from scattered public signals: homepages, equipment/category pages, partner pages, athlete pages, event pages, blog posts, media pages, and contact pages. Those signals are useful, but they are noisy and hard to compare manually.
 
 This pipeline converts public-web evidence into structured sponsor-prospect intelligence that can be queued, scored, reviewed, retried, stored, and turned into outreach-ready drafts.
 
@@ -174,7 +174,7 @@ The workflow supports a small controlled batch per manual or Zapier-triggered de
 
 ## Webhook Run Input
 
-Webhook clients such as Zapier can send fields like this:
+Webhook callers such as Zapier can send fields like this:
 
 ```json
 {
@@ -378,7 +378,7 @@ Starting from a company name and root domain, the workflow discovers and evaluat
 
 - homepage
 - about pages
-- product and category pages
+- equipment and category pages
 - partner, sponsorship, affiliate, ambassador, or collaboration pages
 - blog, news, media, and press pages
 - event, athlete, club, facility, or tournament pages
@@ -435,7 +435,7 @@ The workflow rewards signals such as:
 
 - sport/category relevance
 - sponsor fit
-- product or service alignment
+- offering or service alignment
 - partnership language
 - event/community activation potential
 - evidence breadth
@@ -443,7 +443,7 @@ The workflow rewards signals such as:
 
 The scoring logic combines page-level evidence scores with brand-level aggregation and quality gates. AI is used to classify and summarize evidence, while deterministic workflow logic handles scoring, caps, retry status, timeline potential, and validation.
 
-The workflow also produces separate short-term and long-term partnership potential fields. Short-term potential reflects immediate campaign, event, media, product, venue, or activation signals. Long-term potential reflects durable sponsor fit, partnership language, evidence breadth, high-fit pages, and source quality.
+The workflow also produces separate short-term and long-term partnership potential fields. Short-term potential reflects immediate campaign, event, media, offering, venue, or activation signals. Long-term potential reflects durable sponsor fit, partnership language, evidence breadth, high-fit pages, and source quality.
 
 ---
 
@@ -616,7 +616,7 @@ Disabled legacy Airtable branches include:
 - previous-assessment comparison review update
 - old prospect ranking Airtable output
 
-This keeps Airtable focused on the product workflow:
+This keeps Airtable focused on the active review workflow:
 
 ```text
 Should we pursue this company?
@@ -796,7 +796,7 @@ Recent test runs were used to confirm that the workflow can distinguish strong, 
 
 | Company | Fit Pattern | Score | Decision | Outreach Draft |
 |---|---:|---:|---|---|
-| Direct Equipment Brand | direct pickleball product fit | 100 | pursue | yes |
+| Direct Equipment Brand | direct pickleball equipment fit | 100 | pursue | yes |
 | Adjacent Hydration Brand | adjacent hydration/event activation fit | 100 | pursue | yes |
 | Prospect A | middle vendor/content support fit | 47 | monitor | no |
 | Prospect C | weak/non-sport-specific fit | 6 | reject | no |
