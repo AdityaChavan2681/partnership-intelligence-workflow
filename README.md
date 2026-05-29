@@ -46,7 +46,7 @@ Company intake
 -> update run status from MongoDB job state
 ```
 
-This keeps the workflow focused on decision support before outreach. A company can complete assessment without automatically receiving an outreach draft; only publishable `pursue` decisions move into outreach preparation.
+This keeps the workflow focused on decision support before outreach. A company can complete assessment without automatically receiving an outreach draft; only publishable `pursue` decisions or reviewer-approved records move into outreach preparation.
 
 ---
 
@@ -136,6 +136,8 @@ Zapier or HTTP webhook trigger
 -> classify decision/score change status
 -> save company assessment to MongoDB
 -> save decision record to Airtable
+-> process reviewer_action when a human decision is entered
+   -> monitor, reject, request more information, queue rerun, or approve outreach
 -> generate company-context outreach draft
 -> save outreach draft to MongoDB and Airtable
 -> create contact placeholder/review records
@@ -631,6 +633,34 @@ These legacy nodes are intentionally kept for now because they are disabled, dis
 
 ---
 
+## Manual Decision Loop
+
+The workflow now supports a reviewed-decision branch after the main assessment run. Airtable remains the human decision layer: a reviewer sets `reviewer_action` on a `prospect_decisions` record, then a separate n8n trigger processes that action and writes the result back to Airtable.
+
+Validated reviewer actions:
+
+| reviewer_action | Workflow result | Prospect-facing send? |
+|---|---|---:|
+| `monitor` | Marks `final_review_status = monitored` and records that no outreach draft was generated | no |
+| `needs_more_info` | Marks `final_review_status = needs_more_info` and holds the record for enrichment or manual research | no |
+| `reject` | Marks `final_review_status = rejected` and blocks outreach | no |
+| `rerun_assessment` | Queues a fresh MongoDB job in `brand_assessment_jobs` and marks `final_review_status = rerun_queued` | no |
+| `approve_for_outreach` | Creates an outreach draft in MongoDB and Airtable, sends an owner-review notification, and marks `final_review_status = outreach_approved` | no automated prospect send |
+
+The reviewed-decision branch only processes Airtable records where `reviewer_action` is filled and `review_processed_at` is empty. After processing, it writes `review_processed_at`, `final_review_status`, `next_workflow_step`, and `approval_status` back to the original Airtable record.
+
+This creates a complete review loop:
+
+```text
+assessment result
+-> Airtable decision record
+-> human sets reviewer_action
+-> n8n processes the decision
+-> Airtable status update, rerun queue, or outreach draft review
+```
+
+---
+
 ## Integrations
 
 ### Zapier
@@ -771,6 +801,26 @@ Latest storage, manual-review, and outreach output:
 }
 ```
 
+
+Reviewed-decision loop validation:
+
+```json
+{
+  "validated_reviewer_actions": [
+    "monitor",
+    "needs_more_info",
+    "reject",
+    "rerun_assessment",
+    "approve_for_outreach"
+  ],
+  "monitor_result": "original Airtable record updated as monitored",
+  "needs_more_info_result": "original Airtable record updated for enrichment/manual research",
+  "reject_result": "original Airtable record updated as rejected",
+  "rerun_assessment_result": "MongoDB assessment job queued and original Airtable record marked rerun_queued",
+  "approve_for_outreach_result": "outreach draft saved to MongoDB and Airtable; owner-review email sent; no prospect-facing send executed"
+}
+```
+
 In this latest run, the publishable company was saved to the decision board but did not generate outreach because its `review_decision` was `monitor`, not `pursue`.
 
 Website page discovery was also verified in this run. Page evidence now preserves the expected labels instead of incorrectly treating every discovered URL as a homepage:
@@ -811,7 +861,7 @@ Later middle-fit prospect reruns were also used to validate the historical compa
 
 ### Workflow Overview
 
-<img width="1660" height="269" alt="image" src="https://github.com/user-attachments/assets/d92cf225-cd67-44f3-9c12-3f9e98450d3d" />
+<img width="1655" height="398" alt="image" src="https://github.com/user-attachments/assets/565b6033-eb44-46d0-a376-b2603b091c93" />
 
 ### Airtable Review Output
 
@@ -827,6 +877,9 @@ Later middle-fit prospect reruns were also used to validate the historical compa
 
 Recent validation runs confirmed:
 
+- the reviewed-decision branch correctly processed `monitor`, `needs_more_info`, `reject`, `rerun_assessment`, and `approve_for_outreach` reviewer actions
+- `rerun_assessment` queued a fresh MongoDB job without creating outreach
+- `approve_for_outreach` created MongoDB/Airtable outreach drafts and sent an owner-review notification while keeping prospect-facing sending blocked
 - a full Zapier-triggered/local pipeline run completed successfully with zero top-level errors
 - the latest controlled 5-company batch run completed in 173.9 seconds with two configured 60-second cooldowns and observed Gemini RPM at 7/15
 - manual test prospect mode can queue and assess a named company directly from webhook fields
