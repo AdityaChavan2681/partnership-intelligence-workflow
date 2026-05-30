@@ -4,7 +4,7 @@ Brand prospect assessment, sponsor-fit scoring, decision support, and review-fir
 
 > Status: Active development. This repository currently documents the project architecture, workflow behavior, screenshots, and implementation notes. Credentials, API keys, database connection strings, local tunnel URLs, and environment-specific configuration are intentionally excluded.
 
-> Latest verified run: A Zapier-triggered/local n8n pipeline execution completed successfully with `max_companies_per_run = 5`, using 60-second cooldowns after every 2 processed companies. The run processed Prospect A, Prospect B, Prospect C, Prospect D, and Prospect E once in the same execution; saved one publishable company assessment; held four fallback-only assessments for manual review; and marked the pipeline run complete with MongoDB-backed final counts. The workflow now re-reads selected `brand_assessment_jobs` records before completion so `processed_job_count`, `completed_job_count`, `publishable_job_count`, `review_required_job_count`, `quality_gated_job_count`, and `retryable_job_count` reflect the actual saved job statuses. Review-only quality gates are separated from true retryable technical failures.
+> Latest verified run: A Zapier-triggered/local n8n pipeline execution completed successfully after the latest workflow import and layout pass with `max_companies_per_run = 5`, using 60-second cooldowns after every 2 processed companies. The run processed Prospect A, Prospect B, Prospect C, Prospect D, and Prospect E once in the same execution; completed all five jobs; saved one publishable company assessment; held four assessments for manual review; marked the pipeline run complete with MongoDB-backed final counts; handled page-fetch timeout resilience without stopping the batch; and wrote batch-level Gemini/quota telemetry into the final run status.
 
 This project uses n8n to evaluate companies as potential sponsors, partners, vendors, media partners, facility partners, program partners, or activation partners for a target sports market. The current workflow is tuned for the pickleball ecosystem, but the intake fields and scoring model are designed to support other sports, events, venues, leagues, and commercial partnership categories.
 
@@ -699,20 +699,20 @@ Smartlead, Instantly, or similar outbound platforms are planned as optional down
 
 ## Verified Output Example
 
-The latest controlled-batch test completed successfully with `max_companies_per_run = 5`, `cooldown_after_company_count = 2`, and `batch_cooldown_seconds = 60`. The status model has since been clarified so publishable decision-board results use `assessment_quality_status = publishable`, while fallback-heavy results use `assessment_quality_status = needs_review`.
+The latest controlled-batch test completed successfully after the current workflow import with `max_companies_per_run = 5`, `cooldown_after_company_count = 2`, and `batch_cooldown_seconds = 60`. The status model separates publishable decision-board results from completed-but-review-gated assessments, and the final run status now includes batch-level Gemini/quota telemetry.
 
 Verified execution summary:
 
 ```text
 Status: success
-Started at: 2026-05-26T14:17:10.908Z
-Stopped at: 2026-05-26T14:20:04.845Z
-Measured runtime: 173.9 seconds
+Started at: 2026-05-30T15:30:29.748Z
+Stopped at: 2026-05-30T15:34:37.867Z
+Measured runtime: 248.1 seconds
 Top-level errors: 0
 Companies selected: Prospect A, Prospect B, Prospect C, Prospect D, Prospect E
 Pipeline completion status: completed
-Observed Gemini RPM after run: 7 / 15
-Cooldown behavior: waited twice for 60 seconds after company 2 and company 4
+Cooldown behavior: waited after every 2 processed companies when configured
+Page-fetch timeout handling: continued through fallback handling instead of stopping the batch
 ```
 
 Before marking the pipeline complete, the workflow re-read the selected `brand_assessment_jobs` records from MongoDB. That final database check returned all five selected jobs and produced the completion counts below.
@@ -729,11 +729,23 @@ Batch completion output:
   "quality_gated_job_count": 4,
   "retryable_job_count": 0,
   "failed_provider_job_count": 0,
+  "ai_provider": "google_gemini",
+  "ai_model": "models/gemini-3.1-flash-lite",
+  "ai_company_context_call_count": 5,
+  "ai_page_classification_call_count": 10,
+  "ai_total_estimated_call_count": 15,
+  "quota_rpm_limit": 15,
+  "quota_tpm_limit": 250000,
+  "quota_rpd_limit": 500,
+  "quota_estimated_rpd_used_this_run": 15,
+  "quota_safety_status": "within_estimated_limits",
   "last_message": "Completed processing for 5 assessment job(s): 1 publishable, 4 held for review."
 }
 ```
 
 In this output, `processed_job_count = 5` and `completed_job_count = 5` mean all five selected companies reached an end state inside the same workflow execution. `publishable_job_count = 1` means one result was publishable and passed the quality gate for decision-board publishing. `review_required_job_count = 4` and `quality_gated_job_count = 4` mean four results completed but were held for manual review. `retryable_job_count = 0` means none of those four were treated as technical retry failures.
+
+The latest run also confirmed that transient page-fetch timeouts no longer stop the workflow. Timed-out or blocked pages continue into fallback handling so the company can still reach a completed, review-gated, or publishable state. Batch-level quota telemetry is now written to the final pipeline status instead of only appearing on single-company runs.
 
 Representative decision-board output after the manual-review branch:
 
@@ -861,7 +873,7 @@ Later middle-fit prospect reruns were also used to validate the historical compa
 
 ### Workflow Overview
 
-<img width="1655" height="398" alt="image" src="https://github.com/user-attachments/assets/565b6033-eb44-46d0-a376-b2603b091c93" />
+<img width="1464" height="366" alt="image" src="https://github.com/user-attachments/assets/ddd57c2d-1a6c-47d5-a48b-2e71ba080a4d" />
 
 ### Airtable Review Output
 
@@ -877,11 +889,15 @@ Later middle-fit prospect reruns were also used to validate the historical compa
 
 Recent validation runs confirmed:
 
+- page-fetch timeout handling was verified; a slow or aborted page request now continues through fallback handling instead of stopping the batch
+
+- batch-level Gemini/quota telemetry now saves into final pipeline status, including estimated call count and quota safety status
+
 - the reviewed-decision branch correctly processed `monitor`, `needs_more_info`, `reject`, `rerun_assessment`, and `approve_for_outreach` reviewer actions
 - `rerun_assessment` queued a fresh MongoDB job without creating outreach
 - `approve_for_outreach` created MongoDB/Airtable outreach drafts and sent an owner-review notification while keeping prospect-facing sending blocked
 - a full Zapier-triggered/local pipeline run completed successfully with zero top-level errors
-- the latest controlled 5-company batch run completed in 173.9 seconds with two configured 60-second cooldowns and observed Gemini RPM at 7/15
+- the latest controlled 5-company batch run completed in 248.1 seconds with all five jobs reaching completed status
 - manual test prospect mode can queue and assess a named company directly from webhook fields
 - controlled batch mode processed 5 selected companies once in one pipeline run
 - page discovery now preserves differentiated page labels instead of collapsing all discovered URLs into `homepage`
