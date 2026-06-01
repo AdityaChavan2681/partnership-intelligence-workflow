@@ -591,13 +591,13 @@ Collections include:
 - `pipeline_run_status`: run lock and current run status
 - `pipeline_run_events`: skip/no-work/status events
 
-The queue is intentionally lightweight. Detailed evidence, scoring, decision, and outreach data are stored downstream after assessment.
+The queue is intentionally lightweight. Detailed evidence, scoring, decision, and outreach data are stored downstream after assessment. MongoDB remains the historical and operational record, while Airtable is treated as the current review board.
 
 ---
 
 ## Airtable Review Architecture
 
-Airtable is used for human review, filtering, prioritization, and approval. Publishable assessments and manual-review assessment outcomes both use the `prospect_decisions` table, but only publishable `pursue` decisions continue into outreach draft generation.
+Airtable is used for human review, filtering, prioritization, and approval. Publishable assessments and manual-review assessment outcomes both use the `prospect_decisions` table, but only publishable `pursue` decisions continue into outreach draft generation. Fresh assessment runs clear previous manual-action fields in Airtable, including `reviewer_action`, `review_processed_at`, `final_review_status`, `next_workflow_step`, and `review_notes`, so the table reflects the current review state instead of carrying forward old reviewer outcomes.
 
 Active review tables:
 
@@ -889,10 +889,9 @@ Later middle-fit prospect reruns were also used to validate the historical compa
 
 Recent validation runs confirmed:
 
+- fresh assessment runs clear stale Airtable manual-review fields while MongoDB preserves assessment history
 - page-fetch timeout handling was verified; a slow or aborted page request now continues through fallback handling instead of stopping the batch
-
 - batch-level Gemini/quota telemetry now saves into final pipeline status, including estimated call count and quota safety status
-
 - the reviewed-decision branch correctly processed `monitor`, `needs_more_info`, `reject`, `rerun_assessment`, and `approve_for_outreach` reviewer actions
 - `rerun_assessment` queued a fresh MongoDB job without creating outreach
 - `approve_for_outreach` created MongoDB/Airtable outreach drafts and sent an owner-review notification while keeping prospect-facing sending blocked
