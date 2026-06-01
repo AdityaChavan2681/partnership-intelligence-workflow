@@ -4,7 +4,7 @@ Brand prospect assessment, sponsor-fit scoring, decision support, and review-fir
 
 > Status: Active development. This repository currently documents the project architecture, workflow behavior, screenshots, and implementation notes. Credentials, API keys, database connection strings, local tunnel URLs, and environment-specific configuration are intentionally excluded.
 
-> Latest verified run: A Zapier-triggered/local n8n pipeline execution completed successfully after the latest workflow import and layout pass with `max_companies_per_run = 5`, using 60-second cooldowns after every 2 processed companies. The run processed Prospect A, Prospect B, Prospect C, Prospect D, and Prospect E once in the same execution; completed all five jobs; saved one publishable company assessment; held four assessments for manual review; marked the pipeline run complete with MongoDB-backed final counts; handled page-fetch timeout resilience without stopping the batch; and wrote batch-level Gemini/quota telemetry into the final run status.
+> Latest verified run: A Zapier-triggered/local n8n pipeline execution completed successfully with `max_companies_per_run = 10`, using 60-second cooldowns after every 2 processed companies. The run processed ten anonymized prospects in one execution; completed all ten jobs; saved one publishable company assessment; held nine assessments for manual review; marked the pipeline run complete with MongoDB-backed final counts; and wrote batch-level Gemini/quota telemetry into the final run status.
 
 This project uses n8n to evaluate companies as potential sponsors, partners, vendors, media partners, facility partners, program partners, or activation partners for a target sports market. The current workflow is tuned for the pickleball ecosystem, but the intake fields and scoring model are designed to support other sports, events, venues, leagues, and commercial partnership categories.
 
@@ -25,7 +25,7 @@ If you are reviewing this project quickly, start with these sections:
 - **Workflow Flow**: the end-to-end intake, assessment, review, and storage journey
 - **Decision Layer**: how raw website evidence becomes a pursue/review/monitor/reject recommendation
 - **Reliability Model**: how the workflow handles bad pages, provider errors, retries, and run locks
-- **Verified Output Example**: the latest successful 5-company batch run and final MongoDB-backed counts
+- **Verified Output Example**: the latest successful 10-company batch run and final MongoDB-backed counts
 - **Portfolio Screenshots**: workflow, Airtable review output, and Zapier trigger setup
 
 The strongest implementation signal is not that the workflow can scrape pages. It is that the system turns noisy public-web evidence into reviewable partnership decisions, keeps operational state in MongoDB, prevents weak or failed assessments from becoming outreach, and gives a human reviewer a clear next step.
@@ -93,7 +93,7 @@ The workflow combines:
 - Deterministic scoring, normalization, and quality gates
 - Company-level decision support: `pursue`, `review`, `monitor`, or `reject`
 - Structured decision reason codes and previous-run change tracking
-- Validated controlled one-to-five company batch mode for queue processing
+- Validated controlled one-to-ten company batch mode for queue processing
 - Airtable decision outputs and gated outreach review outputs
 - Review-first outreach preparation with automatic owner-review email notifications
 - Manual outreach tracking and sender-domain readiness fields
@@ -163,14 +163,14 @@ Current workflow snapshot:
 - Current model routing: `models/gemini-3.1-flash-lite`
 - Owner-review email sender used in testing: `test-sender@example.com`
 - Default stale lock timeout for development/manual runs: 10 minutes
-- Manual/dev pipeline run size: 1 to 5 companies per run, capped by runtime input
+- Manual/dev pipeline run size: 1 to 10 companies per run, capped by runtime input
 - Page classification uses one looped extractor lane instead of duplicated parallel batch branches
 - Website page discovery preserves page labels such as `homepage`, `about`, `product_category`, `partners_or_sponsorship`, `events_or_athletes`, and `blog_or_news`
 - Decision outputs use `decision_v2` reason-code logic plus previous-assessment change tracking
 - Optional batch cooldown can pause after a configured number of processed companies
 - Final batch completion counts are computed from fresh MongoDB job records after loop completion
 
-The workflow supports a small controlled batch per manual or Zapier-triggered development run. The default remains one company, while `max_companies_per_run`, `company_batch_size`, or related queue-limit fields can raise the cap up to five companies. A 5-company batch run has been validated end to end with corrected page labels, brand-level de-dupe, quality-gated manual-review outcomes, 60-second cooldowns after every 2 processed companies, outreach gating, and MongoDB-backed final completion counts.
+The workflow supports a controlled batch per manual or Zapier-triggered development run. The default remains one company, while `max_companies_per_run`, `company_batch_size`, or related queue-limit fields can raise the cap up to ten companies. A 10-company batch run has been validated end to end with corrected page labels, brand-level de-dupe, quality-gated manual-review outcomes, 60-second cooldowns after every 2 processed companies, outreach gating, and MongoDB-backed final completion counts.
 
 ---
 
@@ -202,7 +202,7 @@ Webhook callers such as Zapier can send fields like this:
   "event_sponsorship_priority": "high",
   "product_fit_priority": "high",
   "contact_discovery_required": false,
-  "max_companies_per_run": 5,
+  "max_companies_per_run": 10,
   "cooldown_after_company_count": 2,
   "batch_cooldown_seconds": 60,
   "pipeline_stale_after_minutes": 10,
@@ -219,7 +219,7 @@ Notes:
 - `search_page_count` controls Apollo discovery pagination. It does not control website crawl depth.
 - `search_page_size` controls Apollo page size when Apollo discovery is enabled.
 - Website crawl limits are controlled by runtime config, including `crawl_config.max_pages_total`.
-- `max_companies_per_run` controls the selected assessment queue batch size and is capped at 5 for stable manual and Zapier-driven development runs.
+- `max_companies_per_run` controls the selected assessment queue batch size and is currently capped at 10 for controlled manual and Zapier-driven development runs.
 - `cooldown_after_company_count` and `batch_cooldown_seconds` can pause a batch after a configured number of processed companies to reduce pressure on model/provider limits.
 - `pipeline_stale_after_minutes` can override the default lock timeout, capped between 1 and 90 minutes.
 - `manual_sender_email` and `owner_review_email_to` are runtime-configurable and should use placeholders in public documentation.
@@ -238,7 +238,7 @@ If these fields are present:
 
 the workflow creates or updates a `brand_assessment_jobs` record with `source_platform = manual_test`, skips Apollo discovery for that run, and assesses the provided company.
 
-For controlled batch testing, the webhook can also send `manual_test_companies` as a JSON array. The workflow dedupes by domain, caps the manual batch at five companies, queues each company, and restricts the assessment query to the just-seeded manual source IDs.
+For controlled batch testing, the webhook can also send `manual_test_companies` as a JSON array. The workflow dedupes by domain, caps the manual seed list at ten companies, queues each company, and restricts the assessment query to the just-seeded manual source IDs when manual-only testing is intended.
 
 Optional fields:
 
@@ -279,7 +279,7 @@ Batch example:
       "root_domain": "https://prospect-c.example"
     }
   ],
-  "max_companies_per_run": 5,
+  "max_companies_per_run": 10,
   "cooldown_after_company_count": 2,
   "batch_cooldown_seconds": 60
 }
@@ -699,51 +699,53 @@ Smartlead, Instantly, or similar outbound platforms are planned as optional down
 
 ## Verified Output Example
 
-The latest controlled-batch test completed successfully after the current workflow import with `max_companies_per_run = 5`, `cooldown_after_company_count = 2`, and `batch_cooldown_seconds = 60`. The status model separates publishable decision-board results from completed-but-review-gated assessments, and the final run status now includes batch-level Gemini/quota telemetry.
+The latest controlled-batch test completed successfully after raising the workflow cap to `max_companies_per_run = 10`, with `cooldown_after_company_count = 2` and `batch_cooldown_seconds = 60`. The status model separates publishable decision-board results from completed-but-review-gated assessments, and the final run status includes batch-level Gemini/quota telemetry.
 
 Verified execution summary:
 
 ```text
 Status: success
-Started at: 2026-05-30T15:30:29.748Z
-Stopped at: 2026-05-30T15:34:37.867Z
-Measured runtime: 248.1 seconds
+Started at: 2026-06-01T14:14:59.878Z
+Stopped at: 2026-06-01T14:20:58.719Z
+Measured runtime: 358.8 seconds
 Top-level errors: 0
-Companies selected: Prospect A, Prospect B, Prospect C, Prospect D, Prospect E
+Companies selected: Prospect A through Prospect J
 Pipeline completion status: completed
-Cooldown behavior: waited after every 2 processed companies when configured
+Cooldown behavior: waited after company 2, 4, 6, and 8
 Page-fetch timeout handling: continued through fallback handling instead of stopping the batch
 ```
 
-Before marking the pipeline complete, the workflow re-read the selected `brand_assessment_jobs` records from MongoDB. That final database check returned all five selected jobs and produced the completion counts below.
+Before marking the pipeline complete, the workflow re-read the selected `brand_assessment_jobs` records from MongoDB. That final database check returned all ten selected jobs and produced the completion counts below.
 
 Batch completion output:
 
 ```json
 {
   "status": "completed",
-  "processed_job_count": 5,
-  "completed_job_count": 5,
+  "processed_job_count": 10,
+  "completed_job_count": 10,
   "publishable_job_count": 1,
-  "review_required_job_count": 4,
-  "quality_gated_job_count": 4,
+  "review_required_job_count": 9,
+  "quality_gated_job_count": 9,
   "retryable_job_count": 0,
   "failed_provider_job_count": 0,
   "ai_provider": "google_gemini",
   "ai_model": "models/gemini-3.1-flash-lite",
-  "ai_company_context_call_count": 5,
-  "ai_page_classification_call_count": 10,
-  "ai_total_estimated_call_count": 15,
+  "ai_company_context_call_count": 10,
+  "ai_page_classification_call_count": 16,
+  "ai_total_estimated_call_count": 26,
   "quota_rpm_limit": 15,
   "quota_tpm_limit": 250000,
   "quota_rpd_limit": 500,
-  "quota_estimated_rpd_used_this_run": 15,
+  "quota_estimated_rpd_used_this_run": 26,
   "quota_safety_status": "within_estimated_limits",
-  "last_message": "Completed processing for 5 assessment job(s): 1 publishable, 4 held for review."
+  "last_message": "Completed processing for 10 assessment job(s): 1 publishable, 9 held for review."
 }
 ```
 
-In this output, `processed_job_count = 5` and `completed_job_count = 5` mean all five selected companies reached an end state inside the same workflow execution. `publishable_job_count = 1` means one result was publishable and passed the quality gate for decision-board publishing. `review_required_job_count = 4` and `quality_gated_job_count = 4` mean four results completed but were held for manual review. `retryable_job_count = 0` means none of those four were treated as technical retry failures.
+In this output, `processed_job_count = 10` and `completed_job_count = 10` mean all ten selected companies reached an end state inside the same workflow execution. `publishable_job_count = 1` means one result was publishable and passed the quality gate for decision-board publishing. `review_required_job_count = 9` and `quality_gated_job_count = 9` mean nine results completed but were held for manual review. `retryable_job_count = 0` means none of those nine were treated as technical retry failures.
+
+The 10-company scale test also confirmed queue-fill behavior: when the manual input list has fewer companies than `max_companies_per_run`, the selector can fill remaining slots from other eligible MongoDB queue jobs. In the latest scale test, seven manually seeded prospects plus three existing queued prospects produced ten selected jobs. This is useful for queue processing, while a stricter manual-only mode can be added later if isolated manual-list testing is needed.
 
 The latest run also confirmed that transient page-fetch timeouts no longer stop the workflow. Timed-out or blocked pages continue into fallback handling so the company can still reach a completed, review-gated, or publishable state. Batch-level quota telemetry is now written to the final pipeline status instead of only appearing on single-company runs.
 
@@ -804,12 +806,12 @@ Latest storage, manual-review, and outreach output:
 ```json
 {
   "brand_assessment_records_saved": 1,
-  "airtable_decision_records_saved": 5,
-  "manual_review_decision_records_saved": 4,
+  "airtable_decision_records_saved": 10,
+  "manual_review_decision_records_saved": 9,
   "outreach_drafts_created": 0,
   "publishable_company": "Prospect A",
   "publishable_decision": "monitor",
-  "manual_review_companies": 4
+  "manual_review_companies": 9
 }
 ```
 
@@ -889,6 +891,8 @@ Later middle-fit prospect reruns were also used to validate the historical compa
 
 Recent validation runs confirmed:
 
+- the queue selector cap was raised to 10, and a scale test confirmed MongoDB-backed completion counts for all ten selected jobs
+
 - fresh assessment runs clear stale Airtable manual-review fields while MongoDB preserves assessment history
 - page-fetch timeout handling was verified; a slow or aborted page request now continues through fallback handling instead of stopping the batch
 - batch-level Gemini/quota telemetry now saves into final pipeline status, including estimated call count and quota safety status
@@ -896,9 +900,9 @@ Recent validation runs confirmed:
 - `rerun_assessment` queued a fresh MongoDB job without creating outreach
 - `approve_for_outreach` created MongoDB/Airtable outreach drafts and sent an owner-review notification while keeping prospect-facing sending blocked
 - a full Zapier-triggered/local pipeline run completed successfully with zero top-level errors
-- the latest controlled 5-company batch run completed in 248.1 seconds with all five jobs reaching completed status
+- the latest controlled 10-company batch run completed in 358.8 seconds with all ten jobs reaching completed status
 - manual test prospect mode can queue and assess a named company directly from webhook fields
-- controlled batch mode processed 5 selected companies once in one pipeline run
+- controlled batch mode processed 10 selected companies once in one pipeline run
 - page discovery now preserves differentiated page labels instead of collapsing all discovered URLs into `homepage`
 - brand-level de-dupe prevented duplicate MongoDB/Airtable decision records
 - final run status correctly separates completed processing from publishable, manual-review, and retryable outcomes
@@ -918,7 +922,7 @@ Recent validation runs confirmed:
 - the pipeline run lock starts as `running` and finishes as `completed`
 - outreach drafts save to MongoDB and Airtable review tables
 - completion status now re-reads selected MongoDB queue records after the loop to avoid stale n8n loop-memory counts
-- batch cooldown after every 2 processed companies was verified in a 5-company run
+- batch cooldown after every 2 processed companies was verified in a 10-company run, including waits after company 2, 4, 6, and 8
 - prospect decision records and manual-review records save to the `prospect_decisions` Airtable table
 - sender-domain inputs from Zapier flow into outreach readiness fields
 - manual outreach status and follow-up fields are available for review-first sending
@@ -950,7 +954,7 @@ These examples are prototype test results derived from public-web data. They do 
 
 - Zapier-compatible webhook intake
 - Webhook-driven manual test prospect seeding
-- Validated controlled small-batch queue processing with optional cooldown
+- Validated controlled 1-to-10 job queue processing with optional cooldown
 - Optional Apollo company discovery
 - Optional Clay enrichment handoff
 - MongoDB-backed queueing and retry state
