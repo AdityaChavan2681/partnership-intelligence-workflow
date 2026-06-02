@@ -24,7 +24,7 @@ If you are reviewing this project quickly, start with these sections:
 - **Overview**: what problem the pipeline solves and why the workflow exists
 - **Workflow Flow**: the end-to-end intake, assessment, review, and storage journey
 - **Decision Layer**: how raw website evidence becomes a pursue/review/monitor/reject recommendation
-- **Reliability Model**: how the workflow handles bad pages, provider errors, retries, and run locks
+- **Reliability Model**: how the workflow handles bad pages, provider errors, technical retry states, and run locks
 - **Verified Output Example**: the latest successful 15-job batch run and final MongoDB-backed counts
 - **Portfolio Screenshots**: workflow, Airtable review output, and Zapier trigger setup
 
@@ -58,7 +58,7 @@ The practical value is a repeatable review system:
 
 - stronger prioritization before manual outreach
 - evidence-backed reasoning instead of gut feel
-- controlled retry handling for failed or thin assessments
+- controlled fallback handling for thin assessments and retry handling for true provider failures
 - a clear split between operational state and human review outputs
 - safer outreach gating so uncertain records do not become prospect-facing messages
 
@@ -96,7 +96,7 @@ The workflow combines:
 - Configured controlled one-to-fifteen company batch mode for queue processing, with the latest verified scale run at fifteen jobs
 - Airtable decision outputs and gated outreach review outputs
 - Review-first outreach preparation with automatic owner-review email notifications
-- Manual outreach tracking and sender-domain readiness fields
+- Manual review and outreach-status tracking fields
 
 MongoDB is the operational system of record. Airtable is the human review layer.
 
@@ -207,8 +207,6 @@ Webhook callers such as Zapier can send fields like this:
   "batch_cooldown_seconds": 60,
   "pipeline_stale_after_minutes": 10,
   "outreach_delivery_platform": "review_only",
-  "sender_domain": "testdomain.com",
-  "dkim_selector": "default",
   "manual_sender_email": "test-sender@example.com",
   "owner_review_email_to": "reviewer@example.com"
 }
@@ -460,7 +458,6 @@ A completed publishable assessment can generate:
 - evidence used for personalization
 - recommended contact roles
 - manual outreach status fields
-- sender-domain readiness fields for SPF, DKIM, and DMARC
 - an automatic owner-review email through SMTP/Gmail when credentials are configured
 
 The owner-review email is controlled by webhook/Zapier runtime fields:
@@ -470,9 +467,7 @@ manual_sender_email
 owner_review_email_to
 ```
 
-Prospect-facing sends are intentionally gated behind human review, verified contact data, sender-domain readiness, and future platform approval rules.
-
-Smartlead, Instantly, or similar outbound platforms remain planned as optional downstream delivery layers after human approval. The current workflow is review-first rather than bulk-send-first.
+Prospect-facing sends are intentionally blocked in the current workflow. The active path is review-first: generate assessment evidence, prepare an internal draft when appropriate, and require a human decision before any external sending process.
 
 ---
 
@@ -483,7 +478,7 @@ The workflow produces four active review layers:
 - Decision: pursue/review/monitor/reject, confidence, reason codes, previous-run change status, best use case, risk, rationale, and next human step
 - Assessment: score, conclusion, recommended action, category, business model, offer type, and evidence summaries
 - Reliability: quality status, retry flag, provider-error count, fallback count, blocked-page count, and evidence strength
-- Outreach: draft email, owner-review notification, manual outreach status, sender-domain readiness, and contact-role targets
+- Outreach: draft email, owner-review notification, manual outreach status, and contact-role targets
 
 Operational/debug details stay in MongoDB. Airtable is kept focused on human review and action.
 
@@ -586,7 +581,7 @@ Collections include:
 - `brand_assessment_jobs`: lightweight queue, dedupe state, job status, retry status
 - `brand_page_assessments`: page-level evidence and page scores
 - `brand_assessments`: company-level assessment history, decision fields, reason codes, and previous-run comparison fields
-- `outreach_drafts`: outreach drafts, owner-review email payloads, manual outreach status, sender-domain readiness
+- `outreach_drafts`: outreach drafts, owner-review email payloads, and manual outreach status
 - `config`: runtime config, taxonomy, and crawl settings
 - `pipeline_run_status`: run lock and current run status
 - `pipeline_run_events`: skip/no-work/status events
@@ -665,7 +660,7 @@ assessment result
 
 ### Zapier
 
-Zapier is the current trigger layer. It sends the run request to the n8n webhook URL and supplies search, targeting, scoring-priority, run-size, and outreach-readiness fields.
+Zapier is the current trigger layer. It sends the run request to the n8n webhook URL and supplies targeting, manual test, run-size, cooldown, and owner-review email fields.
 
 ### Cloudflare Tunnel
 
@@ -692,10 +687,6 @@ For the current development setup, Airtable is treated as a lightweight review b
 ### SMTP/Gmail
 
 SMTP/Gmail can send automatic owner-review notifications after an outreach draft is generated during a workflow run. Testing used a dedicated test inbox rather than a personal address. Public documentation should use placeholder emails.
-
-### Outreach Delivery Tools
-
-Smartlead, Instantly, or similar outbound platforms are planned as optional downstream delivery layers after human review. Prospect-facing sends are intentionally gated behind approval, verified contact data, and sender-domain readiness.
 
 ---
 
@@ -903,11 +894,12 @@ Recent validation runs confirmed:
 - `approve_for_outreach` created MongoDB/Airtable outreach drafts and sent an owner-review notification while keeping prospect-facing sending blocked
 - a full Zapier-triggered/local pipeline run completed successfully with zero top-level errors
 - the latest controlled 15-job batch run completed in 617.2 seconds with all fifteen jobs reaching completed status
+- the latest 15-job run had `retryable_job_count = 0` and `failed_provider_job_count = 0`; fallback/manual-review records were completed outcomes, not retries
 - manual test prospect mode can queue and assess a named company directly from webhook fields
 - controlled batch mode processed 15 selected jobs once in one pipeline run
 - page discovery now preserves differentiated page labels instead of collapsing all discovered URLs into `homepage`
 - brand-level de-dupe prevented duplicate MongoDB/Airtable decision records
-- final run status correctly separates completed processing from publishable, manual-review, and retryable outcomes
+- final run status correctly separates completed processing from publishable results, manual-review outcomes, and true technical retry states
 - manual test prospect mode skips Apollo discovery for that run and still uses the MongoDB queue
 - Apollo insufficient-credit responses are detected and skipped without blocking assessment
 - Apollo network/DNS/provider errors are configured to continue into the skip path
@@ -919,17 +911,16 @@ Recent validation runs confirmed:
 - `monitor` decisions save to `prospect_decisions` without generating outreach drafts
 - `reject` decisions save to `prospect_decisions` without generating outreach drafts
 - only `pursue` decisions currently generate outreach drafts and owner-review emails; the latest publishable `monitor` result correctly generated no outreach draft
-- `needs_review` and technical `needs_retry` assessments are excluded from outreach draft generation while still preserving manual-review context where appropriate
+- `needs_review` assessments are completed manual-review outcomes, while technical `needs_retry` assessments are excluded from outreach draft generation until rerun or reviewed
 - owner-review email configuration now comes from Zapier/webhook runtime fields
 - the pipeline run lock starts as `running` and finishes as `completed`
 - outreach drafts save to MongoDB and Airtable review tables
 - completion status now re-reads selected MongoDB queue records after the loop to avoid stale n8n loop-memory counts
 - batch cooldown after every 2 processed companies was verified in a 15-job run, including waits after company 2, 4, 6, 8, 10, 12, and 14
 - prospect decision records and manual-review records save to the `prospect_decisions` Airtable table
-- sender-domain inputs from Zapier flow into outreach readiness fields
 - manual outreach status and follow-up fields are available for review-first sending
 - failed-provider assessments are blocked from outreach until a publishable assessment exists
-- a transient Gemini page-classification service-unavailable response was handled without crashing the workflow
+- earlier provider-resilience testing confirmed that a transient Gemini page-classification service-unavailable response can be handled without crashing the workflow
 
 These examples are prototype test results derived from public-web data. They do not represent official recommendations, endorsements, or affiliations with any listed organization.
 
@@ -943,7 +934,7 @@ These examples are prototype test results derived from public-web data. They do 
 - Turning messy public-web evidence into review-ready business outputs
 - Adding decision support on top of raw scoring
 - Tracking whether a decision is new, stable, materially changed, or changed outright
-- Preparing outbound-ready prospect intelligence before automated sending
+- Preparing review-ready prospect intelligence before any external sending process
 - Generating company-context email drafts from assessment evidence
 - Sending automatic owner-review notifications while gating prospect-facing outreach
 - Separating operational state in MongoDB from human review workflows in Airtable
@@ -979,7 +970,7 @@ These examples are prototype test results derived from public-web data. They do 
 - Airtable decision board output
 - Company-context outreach draft generation
 - Automatic owner-review email notification for generated outreach drafts
-- Manual outreach tracking and sender-domain readiness fields
+- Manual review and outreach-status tracking fields
 
 ---
 
@@ -993,8 +984,6 @@ These examples are prototype test results derived from public-web data. They do 
 - Improve automated discovery of company websites when only a company name is provided
 - Reduce AI calls with tighter pre-AI page selection and text limits
 - Add person/contact enrichment only after a prospect reaches a review threshold
-- Add automated outbound domain-readiness checks for SPF, DKIM, and DMARC before campaign launch
-- Add Smartlead or Instantly handoff after human approval and verified deliverability readiness
 - Continue validating controlled multi-company batch runs across stronger, middle, and weaker prospect mixes
 - Delete disabled legacy Airtable nodes after the cleaner decision-board architecture remains stable across more runs
 
@@ -1007,7 +996,7 @@ These examples are prototype test results derived from public-web data. They do 
 - Deterministic validation over blind AI trust
 - Enrichment metadata as context, not final truth
 - Provider failures should be retryable, not silently published
-- Review-first outreach before prospect-facing send automation
+- Review-first outreach before any prospect-facing send process
 - MongoDB for memory and operational state
 - Airtable for review and action
 - Conservative fallback behavior when AI output is missing or weak
