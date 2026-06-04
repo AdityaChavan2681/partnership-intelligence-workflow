@@ -297,6 +297,11 @@ Decision outputs include:
 - `decision_confidence`: `high`, `medium`, or `low`
 - `decision_reason_codes`
 - `decision_reason_summary`
+- `decision_reason`
+- `missing_info`
+- `next_action`
+- `review_priority`
+- `decision_audit_version`
 - `best_use_case`
 - `why_this_company`
 - `main_risk`
@@ -306,6 +311,8 @@ Decision outputs include:
 - `decision_version`
 
 This layer turns raw assessment scores into a human-readable decision record. The goal is not only to say that a company scored well, but to explain what to do next, why it stands out, and what risk should be checked before outreach.
+
+The current workflow also adds decision audit fields for reviewer handoff. `decision_reason` gives the reviewer a plain-language explanation, `missing_info` records what still needs verification, `next_action` states the recommended operational step, `review_priority` separates high/medium/low review urgency, and `decision_audit_version` makes the audit format traceable across workflow changes. These fields flow into Airtable decision/review tables, outreach draft preparation, owner-review emails, and MongoDB outreach draft records.
 
 Decision examples:
 
@@ -475,12 +482,22 @@ Prospect-facing sends are intentionally blocked in the current workflow. The act
 
 The workflow produces four active review layers:
 
-- Decision: pursue/review/monitor/reject, confidence, reason codes, previous-run change status, best use case, risk, rationale, and next human step
+- Decision: pursue/review/monitor/reject, confidence, reason codes, decision reason, missing information, next action, review priority, previous-run change status, best use case, risk, rationale, and next human step
 - Assessment: score, conclusion, recommended action, category, business model, offer type, and evidence summaries
 - Reliability: quality status, retry flag, provider-error count, fallback count, blocked-page count, and evidence strength
 - Outreach: draft email, owner-review notification, manual outreach status, and contact-role targets
 
 Operational/debug details stay in MongoDB. Airtable is kept focused on human review and action.
+
+Airtable review tables should include the decision audit fields used by the current workflow:
+
+- `decision_reason`: long text
+- `missing_info`: long text
+- `next_action`: single line text or single select
+- `review_priority`: single select with `high`, `medium`, and `low`
+- `decision_audit_version`: single line text
+
+These fields are expected in `prospect_decisions`, `outreach_review_queue`, and `partnership_prospect_rankings` when those tables are used for review output.
 
 ---
 
