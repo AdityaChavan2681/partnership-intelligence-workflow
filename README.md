@@ -2,13 +2,13 @@
 
 Brand prospect assessment, sponsor-fit scoring, decision support, and review-first outreach preparation for sports partnership teams.
 
-> Status: Active development. This repository currently documents the project architecture, workflow behavior, screenshots, and implementation notes. Credentials, API keys, database connection strings, local tunnel URLs, and environment-specific configuration are intentionally excluded.
+> Status: Active development. This repository documents the project architecture, workflow behavior, screenshots, and implementation notes. Credentials, API keys, database connection strings, local tunnel URLs, and environment-specific configuration are intentionally excluded.
 
-> Latest verified run: A Zapier-triggered/local n8n pipeline execution completed successfully with `max_companies_per_run = 15`, using 60-second cooldowns after every 2 processed companies. The run processed fifteen anonymized prospects in one execution; completed all fifteen jobs; saved one publishable company assessment; held fourteen assessments for manual review; marked the pipeline run complete with MongoDB-backed final counts; and wrote batch-level Gemini/quota telemetry into the final run status.
+> Latest verified run: A Zapier-triggered/local n8n execution completed with `max_companies_per_run = 15` and 60-second cooldowns after every 2 companies. The run processed fifteen anonymized prospects, completed all fifteen jobs, saved one publishable company assessment, held fourteen assessments for manual review, marked the pipeline complete with MongoDB-backed final counts, and wrote batch-level Gemini/quota telemetry into the final run status.
 
 This project uses n8n to evaluate companies as potential sponsors, partners, vendors, media partners, facility partners, program partners, or activation partners for a target sports market. The current workflow is tuned for the pickleball ecosystem, but the intake fields and scoring model are designed to support other sports, events, venues, leagues, and commercial partnership categories.
 
-The system is designed to answer:
+The system answers:
 
 ```text
 Given a target sports market and an outside company,
@@ -66,7 +66,7 @@ The practical value is a repeatable review system:
 
 ## Repository Scope
 
-This repository is README-first while the workflow is being developed and tested. It documents the system design, workflow behavior, integrations, operating lessons, and portfolio screenshots before the n8n export and setup assets are prepared for release.
+This repository is README-first while the workflow is being developed and tested. It documents the system design, workflow behavior, integrations, operating lessons, and portfolio screenshots.
 
 The working n8n workflow, local credentials, API keys, Zapier setup, MongoDB connection details, Airtable credentials, SMTP credentials, and temporary Cloudflare Tunnel URLs are intentionally excluded.
 
@@ -1030,4 +1030,3 @@ These examples are prototype test results derived from public-web data. They do 
 - Manual outreach preparation
 - Historical monitoring of public commercial signals
 - Sport-level partnership intelligence
-
