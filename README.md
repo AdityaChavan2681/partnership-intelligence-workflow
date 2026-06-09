@@ -6,6 +6,17 @@ Brand prospect assessment, sponsor-fit scoring, decision support, and review-fir
 
 > Latest verified run: A Zapier-triggered/local n8n execution completed with `max_companies_per_run = 15` and 60-second cooldowns after every 2 companies. The run processed fifteen anonymized prospects, completed all fifteen jobs, saved one publishable company assessment, held fourteen assessments for manual review, marked the pipeline complete with MongoDB-backed final counts, and wrote batch-level Gemini/quota telemetry into the final run status.
 
+## Current Status
+
+The latest verified pipeline run confirmed controlled 15-company batch processing, MongoDB-backed completion counts, manual-review gating, and batch-level Gemini/quota telemetry.
+
+Current next work is focused on productizing the review workflow rather than changing the assessment engine:
+
+- improve reviewer ergonomics in Airtable
+- simplify manual test inputs
+- add clearer retry scheduling for true provider failures
+- remove disabled legacy Airtable nodes after more stable runs
+
 This project uses n8n to evaluate companies as potential sponsors, partners, vendors, media partners, facility partners, program partners, or activation partners for a target sports market. The current workflow is tuned for the pickleball ecosystem, but the intake fields and scoring model are designed to support other sports, events, venues, leagues, and commercial partnership categories.
 
 The system answers:
