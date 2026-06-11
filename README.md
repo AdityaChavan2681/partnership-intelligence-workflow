@@ -4,11 +4,11 @@ Brand prospect assessment, sponsor-fit scoring, decision support, and review-fir
 
 > Status: Active development. This repository documents the project architecture, workflow behavior, screenshots, and implementation notes. Credentials, API keys, database connection strings, local tunnel URLs, and environment-specific configuration are intentionally excluded.
 
-> Latest verified run: A Zapier-triggered/local n8n execution completed with `max_companies_per_run = 15` and 60-second cooldowns after every 2 companies. The run processed fifteen anonymized prospects, completed all fifteen jobs, saved one publishable company assessment, held fourteen assessments for manual review, marked the pipeline complete with MongoDB-backed final counts, and wrote batch-level Gemini/quota telemetry into the final run status.
+> Latest verified run: A Zapier-triggered/local n8n execution completed with `max_companies_per_run = 15` and 60-second cooldowns after every 2 companies. The run processed fifteen anonymized prospects, completed all fifteen jobs, saved one publishable company assessment, held fourteen assessments for manual review, wrote Airtable `Review Stage` values for reviewer queueing, marked the pipeline complete with MongoDB-backed final counts, and wrote batch-level Gemini/quota telemetry into the final run status.
 
 ## Current Status
 
-The latest verified pipeline run confirmed controlled 15-company batch processing, MongoDB-backed completion counts, manual-review gating, and batch-level Gemini/quota telemetry.
+The latest verified pipeline run confirmed controlled 15-company batch processing, MongoDB-backed completion counts, manual-review gating, Airtable `Review Stage` mapping, and batch-level Gemini/quota telemetry.
 
 Current next work is focused on productizing the review workflow rather than changing the assessment engine:
 
@@ -620,7 +620,7 @@ The queue is intentionally lightweight. Detailed evidence, scoring, decision, an
 
 ## Airtable Review Architecture
 
-Airtable is used for human review, filtering, prioritization, and approval. Publishable assessments and manual-review assessment outcomes both use the `prospect_decisions` table, but only publishable `pursue` decisions continue into outreach draft generation. Fresh assessment runs clear previous manual-action fields in Airtable, including `reviewer_action`, `review_processed_at`, `final_review_status`, `next_workflow_step`, and `review_notes`, so the table reflects the current review state instead of carrying forward old reviewer outcomes.
+Airtable is used for human review, filtering, prioritization, and approval. Publishable assessments and manual-review assessment outcomes both use the `prospect_decisions` table, but only publishable `pursue` decisions continue into outreach draft generation. The `Review Stage` field gives reviewers a simple queue state on top of the technical assessment status: completed publishable records can land as `Assessed`, while quality-gated outcomes land as `Needs Manual Review`. Fresh assessment runs clear previous manual-action fields in Airtable, including `reviewer_action`, `review_processed_at`, `final_review_status`, `next_workflow_step`, and `review_notes`, so the table reflects the current review state instead of carrying forward old reviewer outcomes.
 
 Active review tables:
 
@@ -779,6 +779,7 @@ Representative decision-board output after the manual-review branch:
     "status": "completed",
     "assessment_quality_status": "publishable",
     "approval_status": "needs_review",
+    "Review Stage": "Assessed",
     "brand_fit_score": 92,
     "review_decision": "monitor",
     "next_human_step": "Keep on the decision board, review evidence quality, and reassess before outreach."
@@ -788,6 +789,7 @@ Representative decision-board output after the manual-review branch:
     "status": "completed",
     "assessment_quality_status": "needs_review",
     "approval_status": "needs_manual_review",
+    "Review Stage": "Needs Manual Review",
     "brand_fit_score": 65,
     "review_decision": "review",
     "manual_review_reason": "All usable pages used fallback or insufficient-evidence records; manual review is needed before publishing."
@@ -797,6 +799,7 @@ Representative decision-board output after the manual-review branch:
     "status": "completed",
     "assessment_quality_status": "needs_review",
     "approval_status": "needs_manual_review",
+    "Review Stage": "Needs Manual Review",
     "brand_fit_score": 60,
     "review_decision": "review",
     "manual_review_reason": "All usable pages used fallback or insufficient-evidence records; manual review is needed before publishing."
@@ -806,6 +809,7 @@ Representative decision-board output after the manual-review branch:
     "status": "completed",
     "assessment_quality_status": "needs_review",
     "approval_status": "needs_manual_review",
+    "Review Stage": "Needs Manual Review",
     "brand_fit_score": 4,
     "review_decision": "reject",
     "manual_review_reason": "Assessment produced a very low score and requires manual verification before any action."
@@ -815,6 +819,7 @@ Representative decision-board output after the manual-review branch:
     "status": "completed",
     "assessment_quality_status": "needs_review",
     "approval_status": "needs_manual_review",
+    "Review Stage": "Needs Manual Review",
     "brand_fit_score": 63,
     "review_decision": "review",
     "manual_review_reason": "All usable pages used fallback or insufficient-evidence records; manual review is needed before publishing."
@@ -829,6 +834,7 @@ Latest storage, manual-review, and outreach output:
   "brand_assessment_records_saved": 1,
   "airtable_decision_records_saved": 15,
   "manual_review_decision_records_saved": 14,
+  "review_stage_mapping_verified": true,
   "outreach_drafts_created": 0,
   "publishable_company": "Example Prospect 1",
   "publishable_decision": "monitor",
